@@ -6,21 +6,23 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
 
+  const normalizeOrigin = (origin: string) => origin.trim().replace(/\/$/, '');
   const configuredOrigins = (process.env.CORS_ORIGIN || '')
     .split(',')
-    .map((origin) => origin.trim())
+    .map(normalizeOrigin)
     .filter(Boolean);
 
   const allowedOrigins = [
     ...configuredOrigins,
-    process.env.FRONTEND_URL,
+    process.env.FRONTEND_URL ? normalizeOrigin(process.env.FRONTEND_URL) : undefined,
+    'https://university-club-management-system.vercel.app',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
   ].filter(Boolean);
 
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(normalizeOrigin(origin))) {
         callback(null, true);
         return;
       }
