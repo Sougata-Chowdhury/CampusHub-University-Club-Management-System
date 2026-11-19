@@ -1,379 +1,253 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { 
-  SpeakerWaveIcon,
+import React, { useEffect, useState } from 'react';
+import {
+  MegaphoneIcon,
   TrashIcon,
   ClockIcon,
-  UserGroupIcon,
-  ArrowLeftIcon,
-  HomeIcon,
-  ExclamationTriangleIcon
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import { announcementService } from '../services/announcementService';
+import { resolveAssetUrl } from '../services/api';
+import {
+  Alert,
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  EmptyState,
+  PageHeader,
+  StatCard,
+} from '../ui';
+
+const timeAgo = (dateString) => {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  const now = new Date();
+  const hours = (now - date) / (1000 * 60 * 60);
+  if (hours < 1) return `${Math.max(1, Math.floor((now - date) / 60000))}m ago`;
+  if (hours < 24) return `${Math.floor(hours)}h ago`;
+  if (hours < 168) return `${Math.floor(hours / 24)}d ago`;
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+  });
+};
 
 const AdminAnnouncements = () => {
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [deleting, setDeleting] = useState({});
-  const [successMessage, setSuccessMessage] = useState('');
+  const [success, setSuccess] = useState('');
+  const [deleting, setDeleting] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState(null);
-
-  useEffect(() => {
-    fetchAllAnnouncements();
-  }, [currentPage]);
 
   const fetchAllAnnouncements = async () => {
     try {
       setLoading(true);
-      const response = await announcementService.getAllAnnouncementsForAdmin(currentPage, 20);
-      setAnnouncements(response.announcements);
-      setPagination(response.pagination);
       setError('');
+      const response = await announcementService.getAllAnnouncementsForAdmin(currentPage, 20);
+      setAnnouncements(response.announcements || []);
+      setPagination(response.pagination || null);
     } catch (err) {
-      setError(err.message || 'Failed to fetch announcements');
+      setError(err.message || 'Failed to load announcements.');
       setAnnouncements([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteAnnouncement = async (announcementId) => {
-    if (!window.confirm('Are you sure you want to delete this announcement? This action cannot be undone.')) {
-      return;
-    }
+  useEffect(() => {
+    fetchAllAnnouncements();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]);
 
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(deleteTarget._id);
+    setError('');
     try {
-      setDeleting(prev => ({ ...prev, [announcementId]: true }));
-      await announcementService.deleteAnnouncement(announcementId);
-      
-      // Remove from local state
-      setAnnouncements(prev => prev.filter(a => a._id !== announcementId));
-      
-      setSuccessMessage('Announcement deleted successfully!');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      await announcementService.deleteAnnouncement(deleteTarget._id);
+      setAnnouncements((prev) => prev.filter((item) => item._id !== deleteTarget._id));
+      setSuccess('Announcement removed from the platform.');
+      setDeleteTarget(null);
     } catch (err) {
-      setError(err.message || 'Failed to delete announcement');
-      setTimeout(() => setError(''), 5000);
+      setError(err.message || 'Failed to delete announcement.');
     } finally {
-      setDeleting(prev => ({ ...prev, [announcementId]: false }));
+      setDeleting(null);
     }
   };
 
-  const handlePageChange = (newPage) => {
-    setCurrentPage(newPage);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = (now - date) / (1000 * 60 * 60);
-    
-    if (diffInHours < 1) {
-      const minutes = Math.floor((now - date) / (1000 * 60));
-      return `${minutes}m ago`;
-    } else if (diffInHours < 24) {
-      return `${Math.floor(diffInHours)}h ago`;
-    } else if (diffInHours < 168) { // 7 days
-      const days = Math.floor(diffInHours / 24);
-      return `${days}d ago`;
-    } else {
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-      });
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center">
-        <div className="text-gray-900 text-xl flex items-center">
-          <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mr-3"></div>
-          Loading announcements...
-        </div>
-      </div>
-    );
-  }
+  const totalPages = pagination?.totalPages || 1;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
-      {/* Navigation */}
-      <nav className="bg-purple-600 border-b border-purple-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <Link 
-                to="/admin/dashboard" 
-                className="text-white hover:text-gray-300 transition-colors flex items-center"
-              >
-                <ArrowLeftIcon className="w-5 h-5 mr-2" />
-                Back to Dashboard
-              </Link>
-              <div className="h-6 border-l border-white/30"></div>
-              <h1 className="text-white text-xl font-bold flex items-center">
-                <SpeakerWaveIcon className="w-6 h-6 mr-2" />
-                Announcements Management
-              </h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link
-                to="/admin/dashboard"
-                className="flex items-center text-white hover:text-gray-300"
-              >
-                <HomeIcon className="w-5 h-5 mr-1" />
-                Dashboard
-              </Link>
-              <button
-                onClick={() => {
-                  localStorage.removeItem('token');
-                  localStorage.removeItem('user');
-                  window.location.href = '/login';
-                }}
-                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Administration"
+        title="Announcements"
+        description="Moderate every club announcement posted across the platform."
+        actions={
+          <Button variant="secondary" icon={ArrowPathIcon} onClick={fetchAllAnnouncements} loading={loading}>
+            Refresh
+          </Button>
+        }
+      />
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4 flex items-center justify-center">
-            <SpeakerWaveIcon className="w-10 h-10 mr-3 text-purple-600" />
-            📢 Announcements Management
-          </h1>
-          <p className="text-xl text-gray-700">Monitor and manage all announcements across the platform</p>
-        </div>
+      {error ? <Alert variant="error">{error}</Alert> : null}
+      {success ? <Alert variant="success">{success}</Alert> : null}
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm">Total Announcements</p>
-                <p className="text-3xl font-bold text-purple-600">{pagination?.totalItems || 0}</p>
-              </div>
-              <SpeakerWaveIcon className="w-8 h-8 text-purple-600" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm">Active</p>
-                <p className="text-3xl font-bold text-green-600">
-                  {announcements.filter(a => a.isActive !== false).length}
-                </p>
-              </div>
-              <div className="text-2xl">✅</div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm">Deleted</p>
-                <p className="text-3xl font-bold text-red-600">
-                  {announcements.filter(a => a.isActive === false).length}
-                </p>
-              </div>
-              <div className="text-2xl">🚫</div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm">Showing</p>
-                <p className="text-3xl font-bold text-purple-600">{announcements.length}</p>
-              </div>
-              <UserGroupIcon className="w-8 h-8 text-purple-600" />
-            </div>
-          </div>
-        </div>
-
-        {/* Success Message */}
-        {successMessage && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-            <p className="text-green-800">{successMessage}</p>
-          </div>
-        )}
-
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-red-800">{error}</p>
-          </div>
-        )}
-
-        {/* Announcements */}
-        {announcements.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-2xl border border-gray-200 shadow-lg">
-            <SpeakerWaveIcon className="w-20 h-20 text-gray-400 mx-auto mb-6" />
-            <h3 className="text-2xl font-semibold text-gray-900 mb-3">
-              📢 No announcements found
-            </h3>
-            <p className="text-gray-600 mb-6 max-w-md mx-auto">
-              There are currently no announcements to display.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {announcements.map((announcement) => (
-              <div
-                key={announcement._id}
-                className="bg-white rounded-2xl p-6 border border-gray-200 shadow-lg transform transition-all duration-300 hover:scale-[1.01] hover:shadow-xl"
-              >
-                {/* Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3 flex-1">
-                    <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center">
-                      <span className="text-white font-bold text-sm">
-                        {announcement.createdBy?.firstName?.charAt(0) || '?'}
-                      </span>
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2 flex-wrap">
-                        <h4 className="text-gray-900 font-semibold">
-                          {announcement.createdBy?.firstName} {announcement.createdBy?.lastName}
-                        </h4>
-                        <span className="text-gray-500 text-sm">•</span>
-                        <span className="text-purple-600 text-sm font-medium">
-                          {announcement.club?.name}
-                        </span>
-                        {announcement.club?.category && (
-                          <>
-                            <span className="text-gray-500 text-sm">•</span>
-                            <span className="text-purple-700 text-xs bg-purple-50 border border-purple-200 px-2 py-1 rounded">
-                              {announcement.club.category}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                      <div className="flex items-center space-x-4 text-gray-600 text-sm mt-1">
-                        <div className="flex items-center space-x-1">
-                          <ClockIcon className="w-4 h-4" />
-                          <span>{formatDate(announcement.createdAt)}</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <span>❤️ {announcement.likes || 0}</span>
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          ID: {announcement._id.slice(-8)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Admin Actions */}
-                  <div className="flex items-center space-x-2 ml-4">
-                    {/* Status Badge */}
-                    <div className={`flex items-center px-3 py-1 rounded-lg text-xs font-semibold ${
-                      announcement.isActive === false
-                        ? 'bg-red-50 border border-red-200 text-red-800'
-                        : 'bg-green-50 border border-green-200 text-green-800'
-                    }`}>
-                      {announcement.isActive === false ? '🚫 DELETED' : '✅ ACTIVE'}
-                    </div>
-                    
-                    <div className="flex items-center px-3 py-1 bg-purple-50 border border-purple-200 text-purple-700 rounded-lg text-xs">
-                      <ExclamationTriangleIcon className="w-4 h-4 mr-1" />
-                      ADMIN
-                    </div>
-                    <button
-                      onClick={() => handleDeleteAnnouncement(announcement._id)}
-                      disabled={deleting[announcement._id] || announcement.isActive === false}
-                      className="text-red-600 hover:text-red-700 transition-colors p-2 rounded-lg hover:bg-red-50 disabled:opacity-50"
-                      title={announcement.isActive === false ? "Already deleted" : "Delete announcement (Admin)"}
-                    >
-                      {deleting[announcement._id] ? (
-                        <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-                      ) : (
-                        <TrashIcon className="w-5 h-5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Content */}
-                <div className="mb-4">
-                  <p className="text-gray-700 text-lg leading-relaxed whitespace-pre-wrap">
-                    {announcement.message}
-                  </p>
-                </div>
-
-                {/* Image */}
-                {announcement.image && (
-                  <div className="mb-4 rounded-xl overflow-hidden border border-gray-200">
-                    <img
-                      src={`http://localhost:8000${announcement.image}`}
-                      alt="Announcement"
-                      className="w-full h-auto max-h-96 object-cover"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                      }}
-                    />
-                  </div>
-                )}
-
-                {/* Footer Info */}
-                <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                  <div className="text-gray-600 text-sm">
-                    <span>Created by {announcement.createdBy?.email}</span>
-                  </div>
-                  <div className="text-gray-600 text-sm">
-                    <span>Club ID: {announcement.club?._id?.slice(-8)}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Pagination */}
-        {pagination && pagination.totalPages > 1 && (
-          <div className="mt-8 flex justify-center">
-            <div className="bg-white rounded-2xl p-2 border border-gray-200 shadow-lg">
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={!pagination.hasPrev}
-                  className="px-3 py-2 rounded-lg text-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed hover:bg-gray-100 transition-colors"
-                >
-                  Previous
-                </button>
-                {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map(page => (
-                  <button
-                    key={page}
-                    onClick={() => handlePageChange(page)}
-                    className={`px-3 py-2 rounded-lg transition-colors ${
-                      page === currentPage
-                        ? 'bg-purple-600 text-white'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
-                <button
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={!pagination.hasNext}
-                  className="px-3 py-2 rounded-lg text-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed hover:bg-gray-100 transition-colors"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Total" value={pagination?.totalItems || 0} icon={MegaphoneIcon} accent="brand" />
+        <StatCard
+          label="Active"
+          value={announcements.filter((item) => item.isActive !== false).length}
+          icon={MegaphoneIcon}
+          accent="success"
+        />
+        <StatCard
+          label="Removed"
+          value={announcements.filter((item) => item.isActive === false).length}
+          icon={TrashIcon}
+          accent="danger"
+        />
+        <StatCard label="On this page" value={announcements.length} icon={ClockIcon} accent="warning" />
       </div>
+
+      <Card>
+        <CardHeader title="All announcements" description="Newest first, including soft-deleted posts." />
+        <CardBody className="space-y-4">
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="h-32 animate-pulse rounded-[10px] bg-ink-100 dark:bg-ink-800" />
+              ))}
+            </div>
+          ) : announcements.length === 0 ? (
+            <EmptyState
+              icon={MegaphoneIcon}
+              title="No announcements yet"
+              description="Club announcements will appear here for moderation."
+            />
+          ) : (
+            announcements.map((announcement) => {
+              const author = announcement.createdBy
+                ? `${announcement.createdBy.firstName || ''} ${announcement.createdBy.lastName || ''}`.trim() ||
+                  announcement.createdBy.email
+                : 'Unknown';
+              return (
+                <article
+                  key={announcement._id}
+                  className="rounded-[10px] border border-ink-200 p-4 dark:border-ink-800"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <Avatar name={author} size="sm" />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-ink-900 dark:text-white">{author}</p>
+                          {announcement.club?.name ? (
+                            <Badge variant="brand">{announcement.club.name}</Badge>
+                          ) : null}
+                          <Badge variant={announcement.isActive === false ? 'danger' : 'success'} dot>
+                            {announcement.isActive === false ? 'Removed' : 'Active'}
+                          </Badge>
+                          <span className="text-xs text-ink-400 dark:text-ink-500">
+                            {timeAgo(announcement.createdAt)}
+                          </span>
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-200">
+                          {announcement.message}
+                        </p>
+                        {announcement.image ? (
+                          <img
+                            src={resolveAssetUrl(announcement.image)}
+                            alt=""
+                            loading="lazy"
+                            className="mt-3 max-h-72 w-full rounded-[10px] border border-ink-200 object-cover dark:border-ink-800"
+                          />
+                        ) : null}
+                        <p className="mt-3 text-xs text-ink-400 dark:text-ink-500">
+                          #{announcement._id.slice(-8)} · {announcement.likes || 0} likes
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      size="xs"
+                      variant="danger-soft"
+                      icon={TrashIcon}
+                      disabled={announcement.isActive === false || deleting === announcement._id}
+                      onClick={() => setDeleteTarget(announcement)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </CardBody>
+
+        {totalPages > 1 ? (
+          <div className="flex items-center justify-between gap-3 border-t border-ink-100 px-4 py-3 text-sm text-ink-500 dark:border-ink-800 dark:text-ink-400">
+            <span>
+              Page {currentPage} of {totalPages}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!pagination?.hasPrev}
+                onClick={() => {
+                  setCurrentPage((page) => Math.max(1, page - 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                Previous
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!pagination?.hasNext}
+                onClick={() => {
+                  setCurrentPage((page) => page + 1);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Card>
+
+      {deleteTarget ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-announcement-title"
+        >
+          <div className="w-full max-w-md rounded-card border border-ink-200 bg-white p-6 shadow-pop dark:border-ink-800 dark:bg-ink-900">
+            <h2 id="delete-announcement-title" className="text-lg font-semibold text-ink-900 dark:text-white">
+              Remove this announcement?
+            </h2>
+            <p className="mt-1.5 text-sm text-ink-500 dark:text-ink-400">
+              The post disappears from student feeds immediately. This cannot be undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={!!deleting}>
+                Cancel
+              </Button>
+              <Button variant="danger" loading={deleting === deleteTarget._id} onClick={handleDelete}>
+                Remove
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

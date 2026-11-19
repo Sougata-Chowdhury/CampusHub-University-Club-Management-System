@@ -43,3 +43,9 @@ export class Event {
 }
 
 export const EventSchema = SchemaFactory.createForClass(Event);
+
+// Indexes for browse, club calendars, "my events" and registration checks.
+EventSchema.index({ isActive: 1, date: 1 });
+EventSchema.index({ clubId: 1, isActive: 1, date: 1 });
+EventSchema.index({ attendees: 1, isActive: 1 });
+EventSchema.index({ createdBy: 1, createdAt: -1 });

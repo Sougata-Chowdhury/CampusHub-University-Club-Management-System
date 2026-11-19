@@ -1,11 +1,43 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { PlusIcon, PhotoIcon, TagIcon, MapPinIcon, CalendarIcon, UsersIcon, UserIcon, CogIcon } from '@heroicons/react/24/outline';
-import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import {
+  CalendarDaysIcon,
+  CheckCircleIcon,
+  InformationCircleIcon,
+  MapPinIcon,
+  PlusIcon,
+  TagIcon,
+  UserGroupIcon,
+} from '@heroicons/react/24/outline';
+import { clubService } from '../services/clubService';
+import {
+  Alert,
+  Button,
+  ButtonLink,
+  Card,
+  CardBody,
+  CardHeader,
+  Field,
+  Input,
+  PageHeader,
+  Select,
+  Textarea,
+} from '../ui';
+
+const categories = [
+  'Academic',
+  'Sports',
+  'Arts',
+  'Technology',
+  'Cultural',
+  'Social',
+  'Professional',
+  'Other',
+];
 
 const CreateClub = () => {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
+  const [form, setForm] = useState({
     name: '',
     description: '',
     category: '',
@@ -13,284 +45,260 @@ const CreateClub = () => {
     meetingTime: '',
     tags: '',
     requirements: '',
-    maxMembers: ''
+    maxMembers: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
 
-  const categories = [
-    'Academic', 'Sports', 'Arts', 'Technology', 'Cultural', 'Social', 'Professional', 'Other'
-  ];
-
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+  const update = (event) => {
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
+    if (fieldErrors[name]) {
+      setFieldErrors((current) => ({ ...current, [name]: undefined }));
+    }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const validate = () => {
+    const next = {};
+    if (!form.name.trim()) next.name = 'Give your club a name.';
+    if (!form.description.trim()) next.description = 'Describe what your club is about.';
+    if (!form.category) next.category = 'Pick a category.';
+    if (form.maxMembers && Number(form.maxMembers) < 1) {
+      next.maxMembers = 'Use a positive number or leave it empty.';
+    }
+    setFieldErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!validate()) return;
+
     setLoading(true);
     setError('');
-
     try {
-      const token = localStorage.getItem('token');
-      const clubData = {
-        ...formData,
-        tags: formData.tags ? formData.tags.split(',').map(tag => tag.trim()) : [],
-        maxMembers: formData.maxMembers ? parseInt(formData.maxMembers) : undefined
-      };
-
-      await axios.post(
-        `${process.env.REACT_APP_BACKEND_URL}/clubs`,
-        clubData,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      alert('Club created successfully! It will be pending admin approval.');
-      navigate('/my-clubs');
-    } catch (error) {
-      setError(error.response?.data?.message || 'Failed to create club');
+      await clubService.createClub({
+        name: form.name.trim(),
+        description: form.description.trim(),
+        category: form.category,
+        location: form.location.trim(),
+        meetingTime: form.meetingTime.trim(),
+        tags: form.tags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+        requirements: form.requirements.trim(),
+        maxMembers: form.maxMembers ? Number(form.maxMembers) : undefined,
+      });
+      navigate('/my-clubs', {
+        state: { message: `${form.name.trim()} was submitted and is waiting for admin approval.` },
+      });
+    } catch (err) {
+      setError(err.message || 'Failed to create club');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
-      {/* Navigation */}
-      <nav className="bg-purple-600 border-b border-purple-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link to="/dashboard" className="text-white text-xl font-bold">
-              University Clubs
-            </Link>
-            <div className="flex items-center space-x-4">
-              <Link to="/dashboard" className="text-white hover:text-purple-100 transition-colors">
-                Dashboard
-              </Link>
-              <Link 
-                to="/profile" 
-                className="bg-purple-500 hover:bg-purple-700 text-white px-3 py-2 rounded-lg transition-colors flex items-center space-x-2"
-              >
-                <UserIcon className="h-4 w-4" />
-                <span>Profile</span>
-              </Link>
-              <Link 
-                to="/settings" 
-                className="bg-purple-500 hover:bg-purple-700 text-white px-3 py-2 rounded-lg transition-colors flex items-center space-x-2"
-              >
-                <CogIcon className="h-4 w-4" />
-                <span>Settings</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <>
+      <PageHeader
+        eyebrow="Start something"
+        title="Create a club"
+        description="Give your community a home. New clubs are reviewed by an administrator before they appear publicly."
+        actions={<ButtonLink to="/my-clubs" variant="secondary">My clubs</ButtonLink>}
+      />
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-600 rounded-full mb-4">
-            <PlusIcon className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Create New Club</h1>
-          <p className="text-xl text-gray-600">Start your own university club and build a community</p>
-        </div>
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader title="Club details" description="Fields marked with * are required." />
+          <CardBody>
+            {error ? (
+              <Alert variant="error" className="mb-5">
+                {error}
+              </Alert>
+            ) : null}
 
-        {/* Form */}
-        <div className="bg-white rounded-3xl p-8 border border-gray-200 shadow-lg">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <p className="text-red-800">{error}</p>
-            </div>
-          )}
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+              <Field label="Club name" htmlFor="club-name" required error={fieldErrors.name}>
+                <Input
+                  id="club-name"
+                  name="name"
+                  value={form.name}
+                  onChange={update}
+                  placeholder="e.g. Robotics Society"
+                  invalid={Boolean(fieldErrors.name)}
+                  maxLength={80}
+                />
+              </Field>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Club Name */}
-            <div>
-              <label className="block text-gray-700 text-sm font-semibold mb-2">
-                Club Name *
-              </label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
+              <Field
+                label="Description"
+                htmlFor="club-description"
                 required
-                placeholder="Enter your club name"
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-400"
-              />
-            </div>
+                error={fieldErrors.description}
+                hint="What will members do? What makes this club worth joining?"
+              >
+                <Textarea
+                  id="club-description"
+                  name="description"
+                  value={form.description}
+                  onChange={update}
+                  rows={5}
+                  placeholder="Describe your club's purpose, activities and goals."
+                  maxLength={1000}
+                />
+              </Field>
 
-            {/* Description */}
-            <div>
-              <label className="block text-gray-700 text-sm font-semibold mb-2">
-                Description *
-              </label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                required
-                rows={4}
-                placeholder="Describe your club's purpose, activities, and goals"
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
-              />
-            </div>
-
-            {/* Category and Location */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-gray-700 text-sm font-semibold mb-2">
-                  Category *
-                </label>
-                <div className="relative">
-                  <TagIcon className="w-5 h-5 text-gray-500 absolute left-3 top-1/2 transform -translate-y-1/2" />
-                  <select
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field label="Category" htmlFor="club-category" required error={fieldErrors.category}>
+                  <Select
+                    id="club-category"
                     name="category"
-                    value={formData.category}
-                    onChange={handleChange}
-                    required
-                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-400 appearance-none"
+                    value={form.category}
+                    onChange={update}
                   >
-                    <option value="" className="bg-white">Select category</option>
-                    {categories.map(category => (
-                      <option key={category} value={category} className="bg-white">
+                    <option value="">Select a category</option>
+                    {categories.map((category) => (
+                      <option key={category} value={category}>
                         {category}
                       </option>
                     ))}
-                  </select>
-                </div>
-              </div>
+                  </Select>
+                </Field>
 
-              <div>
-                <label className="block text-gray-700 text-sm font-semibold mb-2">
-                  Location
-                </label>
-                <div className="relative">
-                  <MapPinIcon className="w-5 h-5 text-gray-500 absolute left-3 top-1/2 transform -translate-y-1/2" />
-                  <input
-                    type="text"
+                <Field label="Meeting location" htmlFor="club-location">
+                  <Input
+                    id="club-location"
                     name="location"
-                    value={formData.location}
-                    onChange={handleChange}
-                    placeholder="Meeting location"
-                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    value={form.location}
+                    onChange={update}
+                    placeholder="e.g. Student Centre, Room 204"
                   />
-                </div>
-              </div>
-            </div>
+                </Field>
 
-            {/* Meeting Time and Max Members */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-gray-700 text-sm font-semibold mb-2">
-                  Meeting Time
-                </label>
-                <div className="relative">
-                  <CalendarIcon className="w-5 h-5 text-gray-500 absolute left-3 top-1/2 transform -translate-y-1/2" />
-                  <input
-                    type="text"
+                <Field label="Meeting time" htmlFor="club-meeting-time">
+                  <Input
+                    id="club-meeting-time"
                     name="meetingTime"
-                    value={formData.meetingTime}
-                    onChange={handleChange}
-                    placeholder="e.g., Wednesdays 6:00 PM"
-                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    value={form.meetingTime}
+                    onChange={update}
+                    placeholder="e.g. Wednesdays at 6:00 PM"
                   />
-                </div>
-              </div>
+                </Field>
 
-              <div>
-                <label className="block text-gray-700 text-sm font-semibold mb-2">
-                  Max Members
-                </label>
-                <div className="relative">
-                  <UsersIcon className="w-5 h-5 text-gray-500 absolute left-3 top-1/2 transform -translate-y-1/2" />
-                  <input
-                    type="number"
+                <Field
+                  label="Member limit"
+                  htmlFor="club-max-members"
+                  error={fieldErrors.maxMembers}
+                  hint="Leave empty for unlimited."
+                >
+                  <Input
+                    id="club-max-members"
                     name="maxMembers"
-                    value={formData.maxMembers}
-                    onChange={handleChange}
-                    placeholder="Leave empty for unlimited"
+                    type="number"
                     min="1"
-                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    value={form.maxMembers}
+                    onChange={update}
+                    placeholder="Unlimited"
                   />
-                </div>
+                </Field>
               </div>
-            </div>
 
-            {/* Tags */}
-            <div>
-              <label className="block text-gray-700 text-sm font-semibold mb-2">
-                Tags
-              </label>
-              <input
-                type="text"
-                name="tags"
-                value={formData.tags}
-                onChange={handleChange}
-                placeholder="Enter tags separated by commas (e.g., programming, web development, coding)"
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-400"
-              />
-              <p className="text-gray-600 text-sm mt-1">Separate multiple tags with commas</p>
-            </div>
+              <Field
+                label="Tags"
+                htmlFor="club-tags"
+                hint="Separate tags with commas, e.g. robotics, coding, competitions"
+              >
+                <Input
+                  id="club-tags"
+                  name="tags"
+                  value={form.tags}
+                  onChange={update}
+                  placeholder="robotics, coding, competitions"
+                />
+              </Field>
 
-            {/* Requirements */}
-            <div>
-              <label className="block text-gray-700 text-sm font-semibold mb-2">
-                Membership Requirements
-              </label>
-              <textarea
-                name="requirements"
-                value={formData.requirements}
-                onChange={handleChange}
-                rows={3}
-                placeholder="Any specific requirements or qualifications for joining (optional)"
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
-              />
-            </div>
+              <Field label="Membership requirements" htmlFor="club-requirements">
+                <Textarea
+                  id="club-requirements"
+                  name="requirements"
+                  value={form.requirements}
+                  onChange={update}
+                  rows={3}
+                  placeholder="Any prerequisites or commitments for new members (optional)."
+                />
+              </Field>
 
-            {/* Submission Notice */}
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-              <div className="flex items-start">
-                <div className="flex-shrink-0">
-                  <svg className="w-5 h-5 text-purple-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-purple-900">
-                    Admin Approval Required
-                  </h3>
-                  <p className="mt-1 text-sm text-purple-700">
-                    Your club will be pending approval after submission. An admin will review and approve it before it becomes visible to other students.
-                  </p>
-                </div>
+              <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+                <ButtonLink to="/my-clubs" variant="secondary" fullWidth>
+                  Cancel
+                </ButtonLink>
+                <Button type="submit" loading={loading} icon={PlusIcon} fullWidth>
+                  Create club
+                </Button>
               </div>
-            </div>
+            </form>
+          </CardBody>
+        </Card>
 
-            {/* Action Buttons */}
-            <div className="flex gap-4">
-              <Link
-                to="/dashboard"
-                className="flex-1 px-6 py-3 bg-gray-100 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-center"
-              >
-                Cancel
-              </Link>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-3 px-6 rounded-xl font-semibold transform transition-all duration-300 hover:scale-105 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Creating...' : 'Create Club'}
-              </button>
-            </div>
-          </form>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader title="How it works" />
+            <CardBody>
+              <ol className="space-y-4">
+                {[
+                  {
+                    icon: InformationCircleIcon,
+                    title: 'Submit your club',
+                    text: 'Fill in the details and send it for review.',
+                  },
+                  {
+                    icon: CheckCircleIcon,
+                    title: 'Admin review',
+                    text: 'An administrator checks the club before it goes live.',
+                  },
+                  {
+                    icon: UserGroupIcon,
+                    title: 'Grow your community',
+                    text: 'Once approved, students can apply and you can publish events.',
+                  },
+                ].map((step, index) => (
+                  <li key={step.title} className="flex gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                      {index + 1}
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-ink-900 dark:text-white">{step.title}</p>
+                      <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{step.text}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title="Tips for approval" />
+            <CardBody className="space-y-3 text-sm text-ink-600 dark:text-ink-300">
+              <p className="flex items-start gap-2">
+                <TagIcon className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+                Choose the category that best matches your club.
+              </p>
+              <p className="flex items-start gap-2">
+                <MapPinIcon className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+                Add a real meeting place so students know where to go.
+              </p>
+              <p className="flex items-start gap-2">
+                <CalendarDaysIcon className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+                A regular meeting time helps members commit.
+              </p>
+            </CardBody>
+          </Card>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

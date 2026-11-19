@@ -55,8 +55,7 @@ export class FileController {
     @UploadedFile() file: Express.Multer.File,
     @Body() uploadFileDto: UploadFileDto,
   ): Promise<FileResponseDto> {
-    console.log('FileController: Uploading file for user:', req.user.userId);
-    
+
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
@@ -84,8 +83,7 @@ export class FileController {
     @UploadedFiles() files: Express.Multer.File[],
     @Body() uploadFileDto: UploadFileDto,
   ): Promise<FileResponseDto[]> {
-    console.log('FileController: Uploading multiple files for user:', req.user.userId, 'count:', files?.length);
-    
+
     if (!files || files.length === 0) {
       throw new BadRequestException('No files uploaded');
     }
@@ -103,8 +101,7 @@ export class FileController {
     page: number;
     totalPages: number;
   }> {
-    console.log('FileController: Getting files with query:', queryDto);
-    // Allow access without authentication
+        // Allow access without authentication
     const userId = req.user?.userId;
     return this.fileService.getFiles(queryDto, userId);
   }
@@ -121,15 +118,14 @@ export class FileController {
     page: number;
     totalPages: number;
   }> {
-    console.log('FileController: Searching files with query:', searchQuery);
-    
+
     if (!searchQuery) {
       throw new BadRequestException('Search query is required');
     }
 
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 20;
-    
+
     // Allow access without authentication
     const userId = req.user?.userId;
     return this.fileService.searchFiles(searchQuery, pageNum, limitNum, userId);
@@ -146,21 +142,18 @@ export class FileController {
     page: number;
     totalPages: number;
   }> {
-    console.log('FileController: Getting files for user:', req.user.userId);
-    return this.fileService.getFiles({ ...queryDto, uploadedBy: req.user.userId }, req.user.userId);
+        return this.fileService.getFiles({ ...queryDto, uploadedBy: req.user.userId }, req.user.userId);
   }
 
   @Get('stats')
   @UseGuards(AuthGuard)
   async getFileStats(@Request() req): Promise<any> {
-    console.log('FileController: Getting file stats for user:', req.user.userId);
-    return this.fileService.getFileStats(req.user.userId);
+        return this.fileService.getFileStats(req.user.userId);
   }
 
   @Get('public/stats')
   async getPublicFileStats(): Promise<any> {
-    console.log('FileController: Getting public file stats');
-    return this.fileService.getFileStats();
+        return this.fileService.getFileStats();
   }
 
   @Get('gallery')
@@ -174,8 +167,7 @@ export class FileController {
     page: number;
     totalPages: number;
   }> {
-    console.log('FileController: Getting public gallery, category:', category, 'page:', page, 'limit:', limit);
-    return this.fileService.getPublicGallery(category, page || 1, limit || 20);
+        return this.fileService.getPublicGallery(category, page || 1, limit || 20);
   }
 
   @Get('serve/:id')
@@ -183,8 +175,7 @@ export class FileController {
     @Param('id') id: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<any> {
-    console.log('FileController: Serving file:', id);
-    
+
     const { file, path } = await this.fileService.serveFile(id);
     // If the stored path is a URL (Cloudinary), redirect to it
     if (typeof file.path === 'string' && file.path.startsWith('http')) {
@@ -207,8 +198,7 @@ export class FileController {
     @Param('id') id: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<any> {
-    console.log('FileController: Serving thumbnail for file:', id);
-    
+
     const { file, path } = await this.fileService.serveThumbnail(id);
     // If thumbnailPath is a URL (Cloudinary), redirect to it
     const thumbPath = file.metadata?.thumbnailPath || path;
@@ -232,8 +222,7 @@ export class FileController {
     @Param('id') id: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<any> {
-    console.log('FileController: Downloading file:', id);
-    
+
     const { file, path } = await this.fileService.serveFile(id);
     // If stored on Cloudinary (URL), redirect to it to let the browser download
     if (typeof file.path === 'string' && file.path.startsWith('http')) {
@@ -255,8 +244,7 @@ export class FileController {
     @Param('id') id: string,
     @Request() req,
   ): Promise<FileResponseDto> {
-    console.log('FileController: Getting file by ID:', id);
-    const userId = req.user?.userId;
+        const userId = req.user?.userId;
     return this.fileService.getFileById(id, userId);
   }
 
@@ -267,8 +255,7 @@ export class FileController {
     @Body() updateFileDto: UpdateFileDto,
     @Request() req,
   ): Promise<FileResponseDto> {
-    console.log('FileController: Updating file:', id, 'by user:', req.user.userId);
-    return this.fileService.updateFile(id, updateFileDto, req.user.userId);
+        return this.fileService.updateFile(id, updateFileDto, req.user.userId);
   }
 
   @Delete(':id')
@@ -277,8 +264,7 @@ export class FileController {
     @Param('id') id: string,
     @Request() req,
   ): Promise<{ message: string }> {
-    console.log('FileController: Deleting file:', id);
-    // Use a default user ID if no authentication
+        // Use a default user ID if no authentication
     const userId = req.user?.userId || 'anonymous';
     return this.fileService.deleteFile(id, userId);
   }

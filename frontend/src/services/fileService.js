@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-class FileService {
+export class FileService {
   constructor() {
     this.baseURL = process.env.REACT_APP_API_URL || 
       (process.env.NODE_ENV === 'production' 
@@ -185,4 +185,6 @@ class FileService {
   }
 }
 
-export default new FileService();
+const fileService = new FileService();
+
+export default fileService;

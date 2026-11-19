@@ -36,10 +36,9 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     try {
       // Extract token from handshake auth or query
       const token = client.handshake.auth?.token || client.handshake.query?.token;
-      
+
       if (!token) {
-        console.log('No token provided, disconnecting client');
-        client.disconnect();
+                client.disconnect();
         return;
       }
 
@@ -48,8 +47,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       const userId = payload.sub || payload.userId;
 
       if (!userId) {
-        console.log('Invalid token payload, disconnecting client');
-        client.disconnect();
+                client.disconnect();
         return;
       }
 
@@ -60,12 +58,11 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       // Join user to their personal room
       client.join(`user:${userId}`);
 
-      console.log(`User ${userId} connected with socket ${client.id}`);
 
       // Send connection confirmation
-      client.emit('connected', { 
+      client.emit('connected', {
         message: 'Successfully connected to notifications',
-        userId: userId 
+        userId: userId
       });
 
       // Send any pending real-time notifications
@@ -80,8 +77,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
   handleDisconnect(client: AuthenticatedSocket) {
     if (client.userId) {
       this.connectedUsers.delete(client.userId);
-      console.log(`User ${client.userId} disconnected`);
-    }
+          }
   }
 
   // Send notification to specific user
@@ -99,8 +95,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       metadata: notification.metadata,
     });
 
-    console.log(`Notification sent to user ${userId}:`, notification.title);
-  }
+      }
 
   // Send notification to multiple users
   sendNotificationToUsers(userIds: string[], notification: any) {
@@ -112,8 +107,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
   // Broadcast notification to all connected users
   broadcastNotification(notification: any) {
     this.server.emit('broadcast', notification);
-    console.log('Broadcast notification sent:', notification.title);
-  }
+      }
 
   // Send notification to users in specific clubs
   sendNotificationToClubs(clubIds: string[], notification: any) {
@@ -127,8 +121,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     if (client.userId) {
       client.join(`club:${clubId}`);
       client.emit('joinedClub', { clubId, message: `Joined club ${clubId} notifications` });
-      console.log(`User ${client.userId} joined club ${clubId} notifications`);
-    }
+          }
   }
 
   @SubscribeMessage('leaveClub')
@@ -136,8 +129,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     if (client.userId) {
       client.leave(`club:${clubId}`);
       client.emit('leftClub', { clubId, message: `Left club ${clubId} notifications` });
-      console.log(`User ${client.userId} left club ${clubId} notifications`);
-    }
+          }
   }
 
   @SubscribeMessage('markAsRead')
@@ -145,8 +137,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     if (client.userId) {
       // Emit to the user that the notification was marked as read
       client.emit('notificationRead', { notificationId });
-      console.log(`User ${client.userId} marked notification ${notificationId} as read`);
-    }
+          }
   }
 
   @SubscribeMessage('getOnlineUsers')
@@ -171,9 +162,8 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
         timestamp: new Date().toISOString(),
         priority: data.priority || 'info',
       });
-      
-      console.log(`Admin broadcast sent by user ${client.userId}`);
-    }
+
+          }
   }
 
   // Utility methods

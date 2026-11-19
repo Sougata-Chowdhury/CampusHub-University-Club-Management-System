@@ -36,8 +36,7 @@ export class UserController {
 
   @Get('profile')
   async getProfile(@Request() req): Promise<UserResponseDto> {
-    console.log('UserController: Getting profile for user:', req.user.userId);
-    return this.userService.getUserProfile(req.user.userId);
+        return this.userService.getUserProfile(req.user.userId);
   }
 
   @Put('profile')
@@ -45,8 +44,7 @@ export class UserController {
     @Request() req,
     @Body() updateProfileDto: UpdateUserProfileDto,
   ): Promise<UserResponseDto> {
-    console.log('UserController: Updating profile for user:', req.user.userId, updateProfileDto);
-    return this.userService.updateUserProfile(req.user.userId, updateProfileDto);
+        return this.userService.updateUserProfile(req.user.userId, updateProfileDto);
   }
 
   @Post('profile/upload-picture')
@@ -72,8 +70,7 @@ export class UserController {
     @Request() req,
     @UploadedFile() file: any,
   ): Promise<UserResponseDto> {
-    console.log('UserController: Uploading profile picture for user:', req.user.userId, file?.filename);
-    
+
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
@@ -87,8 +84,7 @@ export class UserController {
     @Request() req,
     @Body() updateSettingsDto: UpdateUserSettingsDto,
   ): Promise<UserResponseDto> {
-    console.log('UserController: Updating settings for user:', req.user.userId, updateSettingsDto);
-    return this.userService.updateUserSettings(req.user.userId, updateSettingsDto);
+        return this.userService.updateUserSettings(req.user.userId, updateSettingsDto);
   }
 
   @Post('change-password')
@@ -97,8 +93,7 @@ export class UserController {
     @Request() req,
     @Body() changePasswordDto: ChangePasswordDto,
   ): Promise<{ message: string }> {
-    console.log('UserController: Changing password for user:', req.user.userId);
-    return this.userService.changePassword(req.user.userId, changePasswordDto);
+        return this.userService.changePassword(req.user.userId, changePasswordDto);
   }
 
   @Get('activity')
@@ -106,15 +101,13 @@ export class UserController {
     @Request() req,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ): Promise<any[]> {
-    console.log('UserController: Getting activity for user:', req.user.userId, 'limit:', limit);
-    return this.userService.getUserActivity(req.user.userId, limit);
+        return this.userService.getUserActivity(req.user.userId, limit);
   }
 
   @Post('deactivate')
   @HttpCode(HttpStatus.OK)
   async deactivateAccount(@Request() req): Promise<{ message: string }> {
-    console.log('UserController: Deactivating account for user:', req.user.userId);
-    return this.userService.deactivateUser(req.user.userId);
+        return this.userService.deactivateUser(req.user.userId);
   }
 
   @Get('all')
@@ -122,14 +115,12 @@ export class UserController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ): Promise<{users: UserResponseDto[], total: number, page: number, totalPages: number}> {
-    console.log('UserController: Getting all users, page:', page, 'limit:', limit);
-    return this.userService.getAllUsers(page, limit);
+        return this.userService.getAllUsers(page, limit);
   }
 
   @Get(':id')
   async getUserById(@Param('id') id: string): Promise<UserResponseDto> {
-    console.log('UserController: Getting user by ID:', id);
-    return this.userService.getUserProfile(id);
+        return this.userService.getUserProfile(id);
   }
 
   @Post(':id/activity')
@@ -138,8 +129,7 @@ export class UserController {
     @Param('id') userId: string,
     @Body() activityDto: any,
   ): Promise<{ message: string }> {
-    console.log('UserController: Logging activity for user:', userId, activityDto);
-    await this.userService.logUserActivity(userId, activityDto);
+        await this.userService.logUserActivity(userId, activityDto);
     return { message: 'Activity logged successfully' };
   }
 }

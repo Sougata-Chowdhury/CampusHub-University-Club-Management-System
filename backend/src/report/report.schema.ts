@@ -31,20 +31,20 @@ export class Report {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   reportedBy: Types.ObjectId;
 
-  @Prop({ 
-    type: String, 
-    enum: Object.values(ReportType), 
-    required: true 
+  @Prop({
+    type: String,
+    enum: Object.values(ReportType),
+    required: true
   })
   type: ReportType;
 
   @Prop({ type: Types.ObjectId, required: true })
   targetId: Types.ObjectId; // ID of the reported item (event/club/announcement)
 
-  @Prop({ 
-    type: String, 
-    enum: Object.values(ReportCategory), 
-    required: true 
+  @Prop({
+    type: String,
+    enum: Object.values(ReportCategory),
+    required: true
   })
   category: ReportCategory;
 
@@ -57,10 +57,10 @@ export class Report {
   @Prop([String])
   attachments?: string[]; // URLs of uploaded images
 
-  @Prop({ 
-    type: String, 
-    enum: Object.values(ReportStatus), 
-    default: ReportStatus.PENDING 
+  @Prop({
+    type: String,
+    enum: Object.values(ReportStatus),
+    default: ReportStatus.PENDING
   })
   status: ReportStatus;
 

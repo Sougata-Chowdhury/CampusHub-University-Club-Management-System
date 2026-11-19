@@ -49,7 +49,7 @@ export class File extends Document {
     duration?: number; // For videos
     thumbnailPath?: string;
   };
-  
+
   @Prop({ type: Object })
   cloudinary?: {
     public_id?: string;

@@ -1,309 +1,315 @@
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { paymentService } from '../services/paymentService';
-import { clubService } from '../services/clubService';
-import { 
-  CheckCircleIcon, 
-  DocumentIcon,
-  CurrencyDollarIcon,
-  UserIcon,
-  CalendarIcon,
+import React, { useCallback, useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import {
   ArrowLeftIcon,
-  EyeIcon
+  CheckCircleIcon,
+  ClockIcon,
+  CurrencyDollarIcon,
+  DocumentIcon,
+  IdentificationIcon,
+  UserIcon,
 } from '@heroicons/react/24/outline';
-import { Link } from 'react-router-dom';
+import { clubService } from '../services/clubService';
+import { paymentService } from '../services/paymentService';
+import { resolveAssetUrl } from '../services/api';
+import {
+  Alert,
+  Badge,
+  Button,
+  ButtonLink,
+  Card,
+  EmptyState,
+  PageHeader,
+  Skeleton,
+} from '../ui';
+
+const statusVariant = {
+  approved: 'success',
+  pending: 'warning',
+  rejected: 'danger',
+};
+
+const formatDate = (value) =>
+  value
+    ? new Date(value).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '—';
+
+const formatCurrency = (amount, currency = 'BDT') => {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: (currency || 'BDT').toUpperCase(),
+      maximumFractionDigits: 2,
+    }).format(Number(amount) || 0);
+  } catch (error) {
+    return `${amount} ${currency}`;
+  }
+};
+
+const PaymentCard = ({ payment, showUser }) => {
+  const method = payment.paymentMethod
+    ? payment.paymentMethod.charAt(0).toUpperCase() + payment.paymentMethod.slice(1).replace(/_/g, ' ')
+    : 'Not specified';
+  const approvedBy = [payment.approvedBy?.firstName, payment.approvedBy?.lastName]
+    .filter(Boolean)
+    .join(' ');
+  const user = payment.userId;
+
+  return (
+    <Card className="p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-semibold text-ink-900 dark:text-white">
+            {payment.eventId?.name || 'Event removed'}
+          </h3>
+          <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
+            {payment.eventId?.date ? `Event on ${formatDate(payment.eventId.date)}` : 'Payment record'}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-lg font-semibold text-ink-900 dark:text-white">
+            {formatCurrency(payment.amount, payment.currency)}
+          </p>
+          <Badge variant={statusVariant[payment.status] || 'neutral'} className="mt-1">
+            {payment.status || 'unknown'}
+          </Badge>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 text-xs text-ink-500 sm:grid-cols-2 dark:text-ink-400">
+        <span className="flex items-center gap-2">
+          <ClockIcon className="h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+          Paid {formatDate(payment.approvedAt || payment.createdAt)}
+        </span>
+        <span className="flex items-center gap-2">
+          <CurrencyDollarIcon className="h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+          {method}
+        </span>
+        <span className="flex items-center gap-2">
+          <IdentificationIcon className="h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+          <span className="truncate">Ref: {payment.transactionId || 'N/A'}</span>
+        </span>
+        {showUser && user ? (
+          <span className="flex items-center gap-2">
+            <UserIcon className="h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+            <span className="truncate">
+              {`${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Member'}
+            </span>
+          </span>
+        ) : null}
+        {approvedBy ? (
+          <span className="flex items-center gap-2">
+            <CheckCircleIcon className="h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+            Approved by {approvedBy}
+          </span>
+        ) : null}
+      </div>
+
+      {payment.rejectionReason ? (
+        <p className="mt-3 rounded-[10px] border border-danger-100 bg-danger-50 px-3 py-2 text-xs text-danger-700 dark:border-danger-600/30 dark:bg-danger-600/10 dark:text-rose-300">
+          {payment.rejectionReason}
+        </p>
+      ) : null}
+
+      {payment.notes ? (
+        <p className="mt-3 text-xs text-ink-600 dark:text-ink-300">{payment.notes}</p>
+      ) : null}
+
+      {payment.proofOfPayment ? (
+        <a
+          href={resolveAssetUrl(payment.proofOfPayment)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-flex items-center gap-2 rounded-[10px] border border-ink-200 px-3 py-2 text-xs font-medium text-ink-600 transition-colors hover:border-ink-300 hover:bg-ink-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+        >
+          <DocumentIcon className="h-4 w-4" aria-hidden="true" />
+          View payment proof
+        </a>
+      ) : null}
+    </Card>
+  );
+};
 
 const PaymentHistory = () => {
   const { clubId } = useParams();
   const [payments, setPayments] = useState([]);
   const [club, setClub] = useState(null);
+  const [pagination, setPagination] = useState({});
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [pagination, setPagination] = useState({});
-  const [currentPage, setCurrentPage] = useState(1);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = clubId
+        ? await paymentService.getClubPaymentHistory(clubId, page, 10)
+        : await paymentService.getUserPayments(page, 10);
+      setPayments(Array.isArray(response?.payments) ? response.payments : []);
+      setPagination(response?.pagination || {});
+    } catch (err) {
+      setError(err.message || 'Failed to load payment history');
+      setPayments([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [clubId, page]);
 
   useEffect(() => {
-    if (clubId) {
-      fetchClubInfo();
-      fetchPaymentHistory();
-    } else {
-      fetchUserPaymentHistory();
-    }
-  }, [clubId, currentPage]);
+    load();
+  }, [load]);
 
-  const fetchClubInfo = async () => {
-    try {
-      const response = await clubService.getClubById(clubId);
-      setClub(response);
-    } catch (err) {
-      console.error('Error fetching club info:', err);
-    }
-  };
+  useEffect(() => {
+    if (!clubId) return;
+    let active = true;
+    clubService
+      .getClubById(clubId)
+      .then((data) => {
+        if (active) setClub(data);
+      })
+      .catch(() => {
+        /* the history still works without the club header */
+      });
+    return () => {
+      active = false;
+    };
+  }, [clubId]);
 
-  const fetchPaymentHistory = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      const response = await paymentService.getClubPaymentHistory(clubId, currentPage, 10);
-      setPayments(response.payments || []);
-      setPagination(response.pagination || {});
-    } catch (err) {
-      setError('Failed to fetch payment history');
-      console.error('Error fetching payment history:', err);
-      setPayments([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchUserPaymentHistory = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      const response = await paymentService.getUserPayments(currentPage, 10);
-      // Filter only approved payments for user history
-      const approvedPayments = (response.payments || []).filter(p => p.status === 'approved');
-      setPayments(approvedPayments);
-      setPagination(response.pagination || {});
-    } catch (err) {
-      setError('Failed to fetch payment history');
-      console.error('Error fetching payment history:', err);
-      setPayments([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const formatCurrency = (amount, currency = 'USD') => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency.toUpperCase()
-    }).format(amount);
-  };
-
-  const totalRevenue = payments.reduce((sum, payment) => sum + payment.amount, 0);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900 text-white p-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-700 rounded w-1/4 mb-8"></div>
-            <div className="space-y-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-32 bg-gray-700 rounded-lg"></div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const approved = payments.filter((payment) => payment.status === 'approved');
+  const pending = payments.filter((payment) => payment.status === 'pending');
+  const totalApproved = approved.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900 text-white p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center">
-            {clubId && (
-              <Link
-                to={`/clubs/${clubId}/manage-payments`}
-                className="mr-4 p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
-              >
-                <ArrowLeftIcon className="w-6 h-6" />
-              </Link>
-            )}
-            <div className="flex items-center">
-              <CurrencyDollarIcon className="w-8 h-8 text-emerald-400 mr-3" />
-              <div>
-                <h1 className="text-4xl font-bold">Payment History</h1>
-                {club && (
-                  <p className="text-emerald-400 text-lg font-medium">{club.name}</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+    <>
+      <PageHeader
+        eyebrow={clubId ? 'Club finances' : 'Account'}
+        title="Payment history"
+        description={
+          clubId
+            ? `Approved payments received by ${club?.name || 'this club'}.`
+            : 'Every event payment you have submitted and its current status.'
+        }
+        actions={
+          clubId ? (
+            <>
+              <ButtonLink to={`/clubs/${clubId}/manage-payments`} variant="secondary" icon={ArrowLeftIcon}>
+                Manage payments
+              </ButtonLink>
+              <ButtonLink to={`/clubs/${clubId}`}>View club</ButtonLink>
+            </>
+          ) : (
+            <ButtonLink to="/browse-events" variant="secondary">
+              Browse events
+            </ButtonLink>
+          )
+        }
+      />
 
-        {error && (
-          <div className="bg-red-500/20 border border-red-400 text-red-200 px-4 py-3 rounded mb-6">
-            {error}
-          </div>
-        )}
-
-        {/* Summary Card */}
-        <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-6 mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-green-200 text-sm font-medium">Total Approved Payments</p>
-              <p className="text-3xl font-bold text-green-400">{payments.length}</p>
-            </div>
-            <div>
-              <p className="text-green-200 text-sm font-medium">Total Transactions</p>
-              <p className="text-3xl font-bold text-green-400">{formatCurrency(totalRevenue)}</p>
-            </div>
-            <CheckCircleIcon className="w-16 h-16 text-green-400" />
-          </div>
-        </div>
-
-        {/* Payment History List */}
-        {payments.length === 0 ? (
-          <div className="text-center py-12">
-            <CurrencyDollarIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No approved payments yet</h3>
-            <p className="text-gray-600">Approved payments will appear here.</p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-green-400 mb-6">✅ Approved Payments</h2>
-            <div className="space-y-4">
-              {payments.map((payment) => (
-                <PaymentHistoryCard 
-                  key={payment._id}
-                  payment={payment}
-                  formatCurrency={formatCurrency}
-                  formatDate={formatDate}
-                />
-              ))}
-            </div>
-
-            {/* Pagination */}
-            {pagination.totalPages > 1 && (
-              <div className="flex justify-center items-center space-x-4 mt-8">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  disabled={!pagination.hasPrev}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-                >
-                  Previous
-                </button>
-                <span className="text-gray-700 font-medium">
-                  Page {pagination.currentPage} of {pagination.totalPages}
-                </span>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, pagination.totalPages))}
-                  disabled={!pagination.hasNext}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-                >
-                  Next
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// Separate PaymentHistoryCard component for better organization
-const PaymentHistoryCard = ({ payment, formatCurrency, formatDate }) => {
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-lg p-6">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-start space-x-4 flex-1">
-          <div className="flex-shrink-0">
-            <CheckCircleIcon className="w-6 h-6 text-green-500" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              {payment.eventId?.name || 'Event Deleted'}
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div className="flex items-center space-x-2 text-gray-700">
-                <UserIcon className="w-4 h-4" />
-                <span>{payment.userId?.firstName} {payment.userId?.lastName} ({payment.userId?.email})</span>
-              </div>
-              <div className="flex items-center space-x-2 text-gray-700">
-                <CalendarIcon className="w-4 h-4" />
-                <span>Paid: {formatDate(payment.approvedAt || payment.createdAt)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="text-right ml-4">
-          <div className="text-2xl font-bold text-emerald-400 mb-2">
-            {formatCurrency(payment.amount, payment.currency)}
-          </div>
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border bg-green-100 text-green-800 border-green-200">
-            Approved
-          </span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Payment Method</p>
-          <p className="text-gray-900 font-semibold text-base">
-            {payment.paymentMethod.charAt(0).toUpperCase() + payment.paymentMethod.slice(1).replace('_', ' ')}
+      <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Transactions</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">{payments.length}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Approved total</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">
+            {formatCurrency(totalApproved, approved[0]?.currency || 'BDT')}
           </p>
-        </div>
-        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Transaction ID</p>
-          <p className="text-gray-900 font-mono text-sm font-medium">{payment.transactionId || 'N/A'}</p>
-        </div>
-        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Approved By</p>
-          <p className="text-gray-900 text-sm font-semibold">
-            {payment.approvedBy && payment.approvedBy.firstName && payment.approvedBy.lastName ? 
-              `${payment.approvedBy.firstName} ${payment.approvedBy.lastName}` : 
-              payment.approvedBy && (payment.approvedBy.firstName || payment.approvedBy.lastName) ?
-                `${payment.approvedBy.firstName || ''} ${payment.approvedBy.lastName || ''}`.trim() :
-                'Club Administrator'
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Awaiting review</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">{pending.length}</p>
+        </Card>
+      </div>
+
+      {error ? (
+        <Alert
+          variant="error"
+          className="mt-4"
+          action={
+            <button type="button" onClick={load} className="font-semibold underline underline-offset-2">
+              Retry
+            </button>
+          }
+        >
+          {error}
+        </Alert>
+      ) : null}
+
+      <div className="mt-5 space-y-3">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, index) => (
+            <Card key={index} className="p-5">
+              <div className="flex items-start justify-between">
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+                <Skeleton className="h-6 w-24" />
+              </div>
+              <Skeleton className="mt-5 h-10 w-full" />
+            </Card>
+          ))
+        ) : payments.length === 0 ? (
+          <EmptyState
+            icon={CurrencyDollarIcon}
+            title="No payments yet"
+            description={
+              clubId
+                ? 'Approved payments for this club will appear here.'
+                : 'Register for a paid event and submit payment to see it here.'
             }
-          </p>
-        </div>
+            action={<ButtonLink to="/browse-events">Browse events</ButtonLink>}
+          />
+        ) : (
+          payments.map((payment) => (
+            <PaymentCard key={payment._id} payment={payment} showUser={Boolean(clubId)} />
+          ))
+        )}
       </div>
 
-      {payment.eventId?.date && (
-        <div className="mb-4 bg-purple-50 rounded-lg p-3 border border-purple-200">
-          <p className="text-xs text-purple-700 font-semibold uppercase tracking-wide mb-1">Event Date</p>
-          <p className="text-gray-900 font-semibold">{formatDate(payment.eventId.date)}</p>
+      {pagination.totalPages > 1 ? (
+        <div className="mt-6 flex items-center justify-between">
+          <p className="text-sm text-ink-500 dark:text-ink-400">
+            Page {pagination.currentPage || page} of {pagination.totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!pagination.hasPrev}
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!pagination.hasNext}
+              onClick={() => setPage((value) => value + 1)}
+            >
+              Next
+            </Button>
+          </div>
         </div>
-      )}
+      ) : null}
 
-      {payment.eventId?.location && (
-        <div className="mb-4 bg-purple-50 rounded-lg p-3 border border-purple-200">
-          <p className="text-xs text-purple-700 font-semibold uppercase tracking-wide mb-1">Event Location</p>
-          <p className="text-gray-900 font-semibold">{payment.eventId.location}</p>
-        </div>
-      )}
-
-      {payment.proofOfPayment && (
-        <div className="flex items-center space-x-3 text-sm bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-          <DocumentIcon className="w-5 h-5 text-blue-600" />
-          <span className="text-gray-900 font-medium">Payment proof available</span>
-          <a 
-            href={`${process.env.REACT_APP_BACKEND_URL}${payment.proofOfPayment}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:text-blue-800 underline font-bold flex items-center space-x-1"
-          >
-            <EyeIcon className="w-4 h-4" />
-            <span>View</span>
-          </a>
-        </div>
-      )}
-
-      {payment.notes && (
-        <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
-          <p className="text-xs text-amber-700 font-semibold uppercase tracking-wide mb-2">Notes</p>
-          <p className="text-gray-900 font-medium">{payment.notes}</p>
-        </div>
-      )}
-    </div>
+      {!clubId ? (
+        <p className="mt-6 text-center text-xs text-ink-400 dark:text-ink-500">
+          Looking for receipts? Open the event to see your payment status.{' '}
+          <Link to="/browse-events" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
+            Browse events
+          </Link>
+        </p>
+      ) : null}
+    </>
   );
 };
 

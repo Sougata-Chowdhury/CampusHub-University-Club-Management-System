@@ -26,7 +26,7 @@ export class ClubService {
     });
 
     const savedClub = await club.save();
-    
+
     // Add club ID to user's createdClubs array
     await this.userModel.findByIdAndUpdate(
       userId,
@@ -69,30 +69,41 @@ export class ClubService {
   async getApprovedClubs() {
     return this.clubModel
       .find({ status: 'approved', isActive: true })
-      .populate('createdBy', 'firstName lastName email')
+      .populate('createdBy', 'firstName lastName')
+      .populate('members', 'firstName lastName profilePicture')
       .select('-memberApplications')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
   }
 
-  async getClubById(clubId: string) {
+  async getClubById(clubId: string, userId?: string) {
     const club = await this.clubModel
       .findById(clubId)
-      .populate('createdBy', 'firstName lastName email')
-      .populate('members', 'firstName lastName email')
-      .populate('memberApplications.userId', 'firstName lastName email');
+      .populate('createdBy', 'firstName lastName profilePicture')
+      .populate('members', 'firstName lastName profilePicture')
+      .populate('memberApplications.userId', 'firstName lastName profilePicture')
+      .lean();
 
     if (!club) {
       throw new NotFoundException('Club not found');
+    }
+
+    // Only the owner sees every applicant. Everyone else sees, at most,
+    // their own application so the UI can show its status.
+    const ownerId = club.createdBy?._id || club.createdBy;
+    const isOwner = Boolean(userId) && String(ownerId) === String(userId);
+    if (!isOwner) {
+      club.memberApplications = (club.memberApplications || []).filter(
+        (application) =>
+          String(application.userId?._id || application.userId) === String(userId),
+      );
     }
 
     return club;
   }
 
   async getUserClubs(userId: string) {
-    console.log('=== getUserClubs called ===');
-    console.log('User ID received:', userId);
-    console.log('User ID type:', typeof userId);
-    
+
     // First, let's find clubs created by this user directly
     const directlyCreatedClubs = await this.clubModel
       .find({ createdBy: userId })
@@ -109,33 +120,16 @@ export class ClubService {
       });
 
     if (!user) {
-      console.log('❌ User not found with ID:', userId);
-      throw new NotFoundException('User not found');
+            throw new NotFoundException('User not found');
     }
 
-    console.log('✅ User found:', user.firstName, user.lastName, '- Email:', user.email);
-    console.log('Direct clubs found:', directlyCreatedClubs.length);
-    console.log('User joinedClubs array:', user.joinedClubs?.length || 0);
-    
+
     if (directlyCreatedClubs.length > 0) {
-      console.log('First club details:', {
-        name: directlyCreatedClubs[0].name,
-        status: directlyCreatedClubs[0].status,
-        id: directlyCreatedClubs[0]._id,
-        memberApplications: directlyCreatedClubs[0].memberApplications?.length
-      });
-    }
+          }
 
     // Log all club details for debugging
     directlyCreatedClubs.forEach((club, index) => {
-      console.log(`Created Club ${index + 1}:`, {
-        name: club.name,
-        status: club.status,
-        id: club._id,
-        createdBy: club.createdBy._id,
-        membersCount: club.members?.length
-      });
-    });
+          });
 
     return {
       createdClubs: directlyCreatedClubs,
@@ -145,7 +139,7 @@ export class ClubService {
 
   async updateClub(clubId: string, updateClubDto: UpdateClubDto, userId: string) {
     const club = await this.clubModel.findById(clubId);
-    
+
     if (!club) {
       throw new NotFoundException('Club not found');
     }
@@ -166,7 +160,7 @@ export class ClubService {
 
   async applyToJoinClub(clubId: string, userId: string) {
     const club = await this.clubModel.findById(clubId);
-    
+
     if (!club) {
       throw new NotFoundException('Club not found');
     }
@@ -181,15 +175,9 @@ export class ClubService {
       throw new BadRequestException('You are the creator and already a member of this club');
     }
 
-    console.log('Apply to join debug:', {
-      clubId,
-      userId,
-      membersArray: club.members.map(m => m.toString()),
-      applicationsArray: club.memberApplications.map(app => ({ userId: app.userId.toString(), status: app.status }))
-    });
 
     // Check if user is already a member - use proper ObjectId comparison
-    const isMember = club.members.some(memberId => 
+    const isMember = club.members.some(memberId =>
       memberId.equals(new Types.ObjectId(userId))
     );
     if (isMember) {
@@ -241,7 +229,7 @@ export class ClubService {
 
   async withdrawApplication(clubId: string, userId: string) {
     const club = await this.clubModel.findById(clubId);
-    
+
     if (!club) {
       throw new NotFoundException('Club not found');
     }
@@ -258,18 +246,18 @@ export class ClubService {
     // Remove the application
     club.memberApplications.splice(applicationIndex, 1);
     await club.save();
-    
+
     return { message: 'Application withdrawn successfully' };
   }
 
   async handleMemberApplication(
-    clubId: string, 
-    applicationUserId: string, 
-    handleApplicationDto: HandleMemberApplicationDto, 
+    clubId: string,
+    applicationUserId: string,
+    handleApplicationDto: HandleMemberApplicationDto,
     clubCreatorId: string
   ) {
     const club = await this.clubModel.findById(clubId);
-    
+
     if (!club) {
       throw new NotFoundException('Club not found');
     }
@@ -293,7 +281,7 @@ export class ClubService {
     if (handleApplicationDto.status === 'approved') {
       // Add user to members array
       club.members.push(new Types.ObjectId(applicationUserId));
-      
+
       // Add club to user's joinedClubs array
       await this.userModel.findByIdAndUpdate(
         applicationUserId,
@@ -320,7 +308,7 @@ export class ClubService {
   // Admin functions
   async approveClub(clubId: string, approveClubDto: ApproveClubDto, adminId: string) {
     const club = await this.clubModel.findById(clubId);
-    
+
     if (!club) {
       throw new NotFoundException('Club not found');
     }
@@ -346,7 +334,7 @@ export class ClubService {
     const club = await this.clubModel
       .findById(clubId)
       .populate('memberApplications.userId', 'firstName lastName email');
-    
+
     if (!club) {
       throw new NotFoundException('Club not found');
     }
@@ -362,7 +350,7 @@ export class ClubService {
 
   async handleAdminAction(clubId: string, action: 'approve' | 'reject') {
     const club = await this.clubModel.findById(clubId);
-    
+
     if (!club) {
       throw new NotFoundException('Club not found');
     }
@@ -374,7 +362,6 @@ export class ClubService {
     if (action === 'reject') {
       // Delete all events associated with this club when rejecting
       const deletedEvents = await this.eventModel.deleteMany({ clubId: clubId });
-      console.log(`Deleted ${deletedEvents.deletedCount} events for rejected club`);
 
       // Remove club from all members' joinedClubs arrays
       await this.userModel.updateMany(
@@ -384,14 +371,14 @@ export class ClubService {
 
       club.status = 'rejected';
       await club.save();
-      
-      return { 
-        message: `Club ${action}d successfully. ${deletedEvents.deletedCount} associated events were also deleted.` 
+
+      return {
+        message: `Club ${action}d successfully. ${deletedEvents.deletedCount} associated events were also deleted.`
       };
     }
 
     club.status = action === 'approve' ? 'approved' : 'rejected';
-    
+
     if (action === 'approve') {
       club.approvedAt = new Date();
     }
@@ -401,28 +388,24 @@ export class ClubService {
   }
 
   async getUserApplications(userId: string) {
-    console.log('getUserApplications called for userId:', userId);
-    
+
     const clubs = await this.clubModel
       .find({ 'memberApplications.userId': userId })
       .populate('createdBy', 'firstName lastName email')
       .select('name description category memberApplications');
 
-    console.log('Found clubs with applications:', clubs.length);
-    clubs.forEach(club => {
-      console.log('Club:', club.name, 'Applications:', club.memberApplications.length);
-    });
+        clubs.forEach(club => {
+          });
 
     const applications: any[] = [];
-    
+
     clubs.forEach(club => {
       const application = club.memberApplications.find(
         app => app.userId.toString() === userId
       );
-      
+
       if (application) {
-        console.log('Found application for user in club:', club.name, 'Status:', application.status);
-        applications.push({
+                applications.push({
           _id: `${club._id}_${application.userId}`,
           club: {
             _id: club._id,
@@ -436,8 +419,7 @@ export class ClubService {
       }
     });
 
-    console.log('Returning applications:', applications.length);
-    return applications;
+        return applications;
   }
 
   async handleMemberApplicationById(
@@ -447,7 +429,7 @@ export class ClubService {
     clubCreatorId: string
   ) {
     const club = await this.clubModel.findById(clubId).populate('memberApplications.userId', 'firstName lastName email');
-    
+
     if (!club) {
       throw new NotFoundException('Club not found');
     }
@@ -473,11 +455,11 @@ export class ClubService {
       const isAlreadyMember = club.members.some(
         memberId => memberId.toString() === application.userId.toString()
       );
-      
+
       if (!isAlreadyMember) {
         // Add user to members array
         club.members.push(application.userId);
-        
+
         // Also add club to user's joinedClubs array
         await this.userModel.findByIdAndUpdate(
           application.userId,
@@ -487,8 +469,8 @@ export class ClubService {
     }
 
     await club.save();
-    
-    return { 
+
+    return {
       message: `Application ${action}d successfully`,
       application: {
         _id: application._id,
@@ -501,7 +483,7 @@ export class ClubService {
 
   async deleteClub(clubId: string, userId: string) {
     const club = await this.clubModel.findById(clubId);
-    
+
     if (!club) {
       throw new NotFoundException('Club not found');
     }
@@ -514,7 +496,6 @@ export class ClubService {
 
     // Delete all events associated with this club
     const deletedEvents = await this.eventModel.deleteMany({ clubId: clubId });
-    console.log(`Deleted ${deletedEvents.deletedCount} events for deleted club`);
 
     // Remove club from all members' joinedClubs arrays
     if (club.members && club.members.length > 0) {
@@ -533,7 +514,7 @@ export class ClubService {
     // Delete the club
     await this.clubModel.findByIdAndDelete(clubId);
 
-    return { 
+    return {
       message: `Club deleted successfully. ${deletedEvents.deletedCount} associated events were also deleted.`
     };
   }
@@ -555,7 +536,7 @@ export class ClubService {
     }
 
     // Check if user is actually a member
-    const isMember = club.members.some(memberId => 
+    const isMember = club.members.some(memberId =>
       memberId.equals(new this.clubModel.base.Types.ObjectId(userIdToRemove))
     );
 
@@ -566,8 +547,8 @@ export class ClubService {
     // Remove user from club members and their application record
     const updateResult = await this.clubModel.findByIdAndUpdate(
       clubId,
-      { 
-        $pull: { 
+      {
+        $pull: {
           members: userIdToRemove,
           // Remove application record by matching userId field
           memberApplications: { userId: new Types.ObjectId(userIdToRemove) }
@@ -576,12 +557,6 @@ export class ClubService {
       { new: true } // Return the updated document
     );
 
-    console.log('Update result after member removal:', {
-      clubId,
-      userIdToRemove,
-      membersCount: updateResult?.members?.length,
-      applicationsCount: updateResult?.memberApplications?.length
-    });
 
     // Remove club from user's joinedClubs
     await this.userModel.findByIdAndUpdate(
@@ -599,7 +574,7 @@ export class ClubService {
 
     for (const club of clubs) {
       // Check if creator is already a member
-      const creatorIsMember = club.members.some(memberId => 
+      const creatorIsMember = club.members.some(memberId =>
         memberId.equals(club.createdBy)
       );
 
@@ -618,9 +593,9 @@ export class ClubService {
       }
     }
 
-    return { 
+    return {
       message: `Fixed creator membership for ${fixedClubs.length} clubs`,
-      fixedClubs 
+      fixedClubs
     };
   }
 }

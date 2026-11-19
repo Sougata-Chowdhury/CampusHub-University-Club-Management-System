@@ -24,12 +24,9 @@ export const clubService = {
   // Get user's applications
   getUserApplications: async () => {
     try {
-      console.log('clubService: Calling /clubs/my-applications API');
       const response = await api.get('/clubs/my-applications');
-      console.log('clubService: API response:', response.data);
       return response.data;
     } catch (error) {
-      console.error('clubService: API error:', error);
       throw new Error(error.response?.data?.message || 'Failed to fetch user applications');
     }
   },
@@ -101,6 +98,18 @@ export const clubService = {
       return response.data;
     } catch (error) {
       throw new Error(error.response?.data?.message || 'Failed to fetch club applications');
+    }
+  },
+
+  // Handle an application by its own id (approve/reject)
+  handleApplicationAction: async (clubId, applicationId, action) => {
+    try {
+      const response = await api.patch(`/clubs/${clubId}/applications/${applicationId}`, {
+        action,
+      });
+      return response.data;
+    } catch (error) {
+      throw new Error(error.response?.data?.message || `Failed to ${action} application`);
     }
   },
 

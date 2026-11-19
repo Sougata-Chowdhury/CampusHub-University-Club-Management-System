@@ -1,422 +1,527 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import {
-  CalendarIcon,
-  MapPinIcon,
-  UserGroupIcon,
-  PlusIcon,
-  EyeIcon,
-  PencilIcon,
-  TrashIcon,
-  SparklesIcon,
-  CheckCircleIcon,
-  UserPlusIcon,
   ArrowLeftIcon,
-  ExclamationTriangleIcon,
-  CurrencyDollarIcon
+  CalendarDaysIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  EyeIcon,
+  MapPinIcon,
+  PencilSquareIcon,
+  PlusIcon,
+  TicketIcon,
+  TrashIcon,
+  UserGroupIcon,
+  UserMinusIcon,
+  UserPlusIcon,
 } from '@heroicons/react/24/outline';
-import { eventService } from '../services/eventService';
+import { useAuth } from '../contexts/AuthContext';
 import { clubService } from '../services/clubService';
-import axios from 'axios';
+import { eventService } from '../services/eventService';
+import {
+  Alert,
+  Badge,
+  Button,
+  ButtonLink,
+  Card,
+  EmptyState,
+  PageHeader,
+  SearchInput,
+  SegmentedControl,
+  SkeletonCard,
+} from '../ui';
+
+const idOf = (value) => (value && typeof value === 'object' ? value._id || value.id : value);
+
+const formatMonth = (value) =>
+  value
+    ? new Date(value).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()
+    : '—';
+
+const formatDay = (value) => (value ? new Date(value).getDate() : '—');
+
+const formatWeekdayTime = (value) =>
+  value
+    ? new Date(value).toLocaleString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : 'Date to be announced';
 
 const ClubEvents = () => {
   const { clubId } = useParams();
-  const navigate = useNavigate();
-  const [events, setEvents] = useState([]);
+  const { user } = useAuth();
+
   const [club, setClub] = useState(null);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-  const [registering, setRegistering] = useState({});
-  const [user, setUser] = useState(null);
+  const [notice, setNotice] = useState('');
+  const [pendingId, setPendingId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('upcoming');
 
-  useEffect(() => {
-    fetchClubEvents();
-    fetchClubDetails();
-    fetchUserInfo();
-  }, [clubId]);
+  const userId = user?._id || user?.id;
 
-  const fetchUserInfo = async () => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const response = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/users/profile`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setUser(response.data);
-      } catch (error) {
-        console.error('Failed to fetch user info:', error);
-      }
-    }
-  };
-
-  const fetchClubEvents = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError('');
     try {
-      const eventsData = await eventService.getEventsByClub(clubId);
-      setEvents(eventsData || []);
-    } catch (error) {
-      console.error('Failed to fetch club events:', error);
-      setError('Failed to fetch club events');
+      const [clubData, eventsData] = await Promise.all([
+        clubService.getClubById(clubId),
+        eventService.getEventsByClub(clubId),
+      ]);
+      setClub(clubData);
+      setEvents(Array.isArray(eventsData) ? eventsData : []);
+    } catch (err) {
+      setError(err.message || 'Failed to load club events');
     } finally {
       setLoading(false);
     }
-  };
+  }, [clubId]);
 
-  const fetchClubDetails = async () => {
-    try {
-      const clubData = await clubService.getClubById(clubId);
-      setClub(clubData);
-    } catch (error) {
-      console.error('Failed to fetch club details:', error);
-      setError('Failed to fetch club details');
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const isOwner = Boolean(club && userId && String(idOf(club.createdBy)) === String(userId));
+
+  const isRegistered = (event) =>
+    Boolean(userId) && (event.attendees || []).some((attendee) => String(idOf(attendee)) === String(userId));
+
+  const isPastEvent = (event) => new Date(event.date) < new Date();
+
+  const isFull = (event) =>
+    event.maxAttendees > 0 && (event.attendees?.length || 0) >= event.maxAttendees;
+
+  const counts = useMemo(
+    () => ({
+      upcoming: events.filter((event) => !isPastEvent(event)).length,
+      past: events.filter((event) => isPastEvent(event)).length,
+    }),
+    [events],
+  );
+
+  const visibleEvents = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    let result = events;
+
+    if (filter === 'upcoming') result = result.filter((event) => !isPastEvent(event));
+    if (filter === 'past') result = result.filter((event) => isPastEvent(event));
+
+    if (term) {
+      result = result.filter(
+        (event) =>
+          event.name?.toLowerCase().includes(term) ||
+          event.description?.toLowerCase().includes(term) ||
+          event.location?.toLowerCase().includes(term),
+      );
     }
-  };
 
-  const handleEventRegistration = async (eventId, action) => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setError('Please login to register for events');
-      return;
-    }
+    return [...result].sort((a, b) => {
+      const diff = new Date(a.date || 0) - new Date(b.date || 0);
+      return filter === 'past' ? -diff : diff;
+    });
+  }, [events, filter, search]);
 
-    setRegistering(prev => ({ ...prev, [eventId]: true }));
+  const handleRegistration = async (event, action) => {
+    setPendingId(event._id);
     setError('');
-
+    setNotice('');
     try {
       if (action === 'join') {
-        const response = await eventService.joinEvent(eventId);
-        console.log('Registration successful:', response);
-        setSuccessMessage('Successfully registered for event!');
+        await eventService.joinEvent(event._id);
+        setNotice(`You are registered for ${event.name}.`);
       } else {
-        const response = await eventService.leaveEvent(eventId);
-        console.log('Unregistration successful:', response);
-        setSuccessMessage('Successfully unregistered from event!');
+        await eventService.leaveEvent(event._id);
+        setNotice(`Registration for ${event.name} was cancelled.`);
       }
-
-      // Refresh events to get updated attendee lists
-      await fetchClubEvents();
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccessMessage(''), 3000);
-      
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || error.message || `Failed to ${action} event`;
-      setError(errorMessage);
-      
-      // If already registered error, still refresh to sync UI
-      if (errorMessage.includes('already registered')) {
-        await fetchClubEvents();
-      }
+      setEvents((current) =>
+        current.map((item) => {
+          if (item._id !== event._id) return item;
+          const attendees = (item.attendees || []).filter(
+            (attendee) => String(idOf(attendee)) !== String(userId),
+          );
+          if (action === 'join') attendees.push({ _id: userId });
+          return { ...item, attendees };
+        }),
+      );
+    } catch (err) {
+      setError(err.message || `Could not ${action === 'join' ? 'register for' : 'cancel'} this event`);
     } finally {
-      setRegistering(prev => ({ ...prev, [eventId]: false }));
+      setPendingId(null);
     }
   };
 
-  const handleDeleteEvent = async (eventId) => {
-    if (!window.confirm('Are you sure you want to delete this event?')) return;
-
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setError('');
     try {
-      await eventService.deleteEvent(eventId);
-      setEvents(events.filter(event => event._id !== eventId));
-      setSuccessMessage('Event deleted successfully!');
-      setTimeout(() => setSuccessMessage(''), 3000);
-    } catch (error) {
-      setError('Failed to delete event');
+      await eventService.deleteEvent(deleteTarget._id);
+      setEvents((current) => current.filter((event) => event._id !== deleteTarget._id));
+      setNotice(`“${deleteTarget.name}” was deleted.`);
+      setDeleteTarget(null);
+    } catch (err) {
+      setError(err.message || 'Failed to delete event');
+    } finally {
+      setDeleting(false);
     }
   };
 
-  const isUserRegistered = (event) => {
-    if (!user || !event.attendees) return false;
-    
-    const userId = user._id || user.id;
-    return event.attendees.some(attendee => {
-      const attendeeId = typeof attendee === 'string' ? attendee : (attendee._id || attendee.id);
-      return attendeeId === userId;
-    });
-  };
-
-  const isEventFull = (event) => {
-    return event.maxAttendees > 0 && event.attendees?.length >= event.maxAttendees;
-  };
-
-  const isClubOwner = () => {
-    return user && club && (club.createdBy === user._id || club.createdBy._id === user._id);
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const getEventStatus = (eventDate) => {
-    const now = new Date();
-    const eventDateTime = new Date(eventDate);
-    
-    if (eventDateTime < now) {
-      return { status: 'past', color: 'gray', text: 'Past Event' };
-    } else if (eventDateTime <= new Date(now.getTime() + 24 * 60 * 60 * 1000)) {
-      return { status: 'today', color: 'green', text: 'Today/Tomorrow' };
-    } else {
-      return { status: 'upcoming', color: 'blue', text: 'Upcoming' };
-    }
-  };
+  const filterOptions = [
+    { value: 'upcoming', label: 'Upcoming', count: counts.upcoming },
+    { value: 'past', label: 'Past', count: counts.past },
+    { value: 'all', label: 'All', count: events.length },
+  ];
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-800 flex items-center justify-center">
-        <div className="text-white text-xl">Loading club events...</div>
-      </div>
+      <>
+        <PageHeader eyebrow="Club events" title={club?.name || 'Club events'} />
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <SkeletonCard key={index} />
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  if (!club) {
+    return (
+      <>
+        <PageHeader eyebrow="Club events" title="Club events" />
+        <div className="mt-6">
+          <Alert variant="error" title="We could not load this club">
+            {error || 'The club may have been removed.'}
+          </Alert>
+          <div className="mt-4">
+            <ButtonLink to="/my-clubs" variant="secondary" icon={ArrowLeftIcon}>
+              Back to my clubs
+            </ButtonLink>
+          </div>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-800">
-      {/* Navigation */}
-      <nav className="bg-white/10 backdrop-blur-lg border-b border-white/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link to="/dashboard" className="text-white text-xl font-bold">
-              University Clubs
-            </Link>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => navigate(-1)}
-                className="flex items-center text-white hover:text-gray-300 transition-colors"
-              >
-                <ArrowLeftIcon className="w-5 h-5 mr-1" />
-                Back
-              </button>
-              <Link to="/dashboard" className="text-white hover:text-gray-300 transition-colors">
-                Dashboard
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <>
+      <PageHeader
+        eyebrow={club.category || 'Club events'}
+        title={`${club.name} events`}
+        description={club.description || 'Everything this club has planned, in one place.'}
+        actions={
+          <>
+            <ButtonLink to={`/clubs/${clubId}`} variant="secondary" icon={ArrowLeftIcon}>
+              Club page
+            </ButtonLink>
+            {isOwner ? (
+              <ButtonLink to={`/create-event?clubId=${clubId}`} icon={PlusIcon}>
+                New event
+              </ButtonLink>
+            ) : null}
+          </>
+        }
+      />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <SparklesIcon className="w-8 h-8 text-yellow-400 mr-3" />
-            <h1 className="text-4xl font-bold text-white">
-              {club ? `🎉 ${club.name} Events` : '🎉 Club Events'}
-            </h1>
-            <SparklesIcon className="w-8 h-8 text-yellow-400 ml-3" />
-          </div>
-          
-          {club && (
-            <div className="max-w-2xl mx-auto mb-6">
-              <p className="text-xl text-gray-300 mb-4">{club.description}</p>
-              <div className="flex items-center justify-center space-x-6 text-sm">
-                <div className="flex items-center text-blue-200">
-                  <UserGroupIcon className="w-4 h-4 mr-1" />
-                  {club.members?.length || 0} member{(club.members?.length || 0) !== 1 ? 's' : ''}
-                </div>
-                <div className="flex items-center text-green-200">
-                  <CalendarIcon className="w-4 h-4 mr-1" />
-                  {events.length} event{events.length !== 1 ? 's' : ''}
-                </div>
-                <div className="text-purple-200">
-                  📅 {club.category}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Success Message */}
-          {successMessage && (
-            <div className="bg-green-500/20 border border-green-400/50 rounded-lg p-4 mb-6 max-w-md mx-auto animate-pulse">
-              <div className="flex items-center justify-center text-green-200">
-                <CheckCircleIcon className="w-5 h-5 mr-2" />
-                {successMessage}
-              </div>
-            </div>
-          )}
-
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 mb-6 max-w-md mx-auto">
-              <p className="text-red-200 text-center">{error}</p>
-            </div>
-          )}
-
-          {/* Create Event Button for Club Owners */}
-          {isClubOwner() && (
-            <Link
-              to={`/create-event?clubId=${clubId}`}
-              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-xl font-semibold transform transition-all duration-300 hover:scale-105 hover:shadow-xl mb-6"
-            >
-              <PlusIcon className="w-5 h-5 mr-2" />
-              Create New Event for {club?.name}
-            </Link>
-          )}
-        </div>
-
-        {/* Events Grid */}
-        {events.length === 0 ? (
-          <div className="text-center py-12">
-            <CalendarIcon className="w-24 h-24 text-gray-400 mx-auto mb-6" />
-            <h3 className="text-2xl font-semibold text-white mb-4">No Events Yet</h3>
-            <p className="text-gray-300 mb-6">
-              {isClubOwner() 
-                ? 'Create the first event for your club!' 
-                : 'This club hasn\'t created any events yet. Check back later!'
-              }
-            </p>
-            {isClubOwner() && (
-              <Link
-                to={`/create-event?clubId=${clubId}`}
-                className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-xl font-semibold transform transition-all duration-300 hover:scale-105 hover:shadow-xl"
-              >
-                <PlusIcon className="w-6 h-6 mr-3" />
-                Create First Event
-              </Link>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {events.map((event) => {
-              const eventStatus = getEventStatus(event.date);
-              const isRegistered = isUserRegistered(event);
-              const isFull = isEventFull(event);
-              const isPastEvent = eventStatus.status === 'past';
-              
-              return (
-                <div
-                  key={event._id}
-                  className={`bg-white/10 backdrop-blur-lg rounded-2xl p-6 border transform transition-all duration-300 hover:scale-105 border-${eventStatus.color}-400/50 shadow-${eventStatus.color}-500/20 shadow-lg`}
-                >
-                  {/* Event Status Badge */}
-                  <div className="flex justify-between items-start mb-4">
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm bg-${eventStatus.color}-500/20 border border-${eventStatus.color}-400/50 text-${eventStatus.color}-200`}>
-                      {eventStatus.text}
-                    </span>
-                    {event.isPaid && (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-yellow-500/20 border border-yellow-400/50 text-yellow-200">
-                        <CurrencyDollarIcon className="w-3 h-3 mr-1" />
-                        {event.currency} {event.price}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Event Info */}
-                  <div className="mb-4">
-                    <h3 className="text-xl font-bold text-white mb-2">{event.name}</h3>
-                    <p className="text-gray-300 text-sm mb-3 line-clamp-2">{event.description}</p>
-                    
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center text-blue-200">
-                        <CalendarIcon className="w-4 h-4 mr-2" />
-                        {formatDate(event.date)}
-                      </div>
-                      <div className="flex items-center text-green-200">
-                        <MapPinIcon className="w-4 h-4 mr-2" />
-                        {event.location}
-                      </div>
-                      <div className="flex items-center text-purple-200">
-                        <UserGroupIcon className="w-4 h-4 mr-2" />
-                        {event.attendees?.length || 0} attendee{(event.attendees?.length || 0) !== 1 ? 's' : ''}
-                        {event.maxAttendees && ` / ${event.maxAttendees} max`}
-                        {isFull && <span className="ml-2 text-red-300">(Full)</span>}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex flex-wrap gap-2">
-                    <Link
-                      to={`/events/${event._id}`}
-                      className="flex-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-200 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center"
-                    >
-                      <EyeIcon className="w-4 h-4 mr-1" />
-                      View
-                    </Link>
-                    
-                    {isClubOwner() && (
-                      <>
-                        <Link
-                          to={`/events/${event._id}/edit`}
-                          className="flex-1 bg-green-500/20 hover:bg-green-500/30 text-green-200 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center"
-                        >
-                          <PencilIcon className="w-4 h-4 mr-1" />
-                          Edit
-                        </Link>
-                        <button
-                          onClick={() => handleDeleteEvent(event._id)}
-                          className="flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-200 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center"
-                        >
-                          <TrashIcon className="w-4 h-4 mr-1" />
-                          Delete
-                        </button>
-                      </>
-                    )}
-                    
-                    {/* Registration Button for Non-owners */}
-                    {!isClubOwner() && !isPastEvent && (
-                      <div className="w-full mt-2">
-                        {isRegistered ? (
-                          <button
-                            onClick={() => handleEventRegistration(event._id, 'leave')}
-                            disabled={registering[event._id]}
-                            className="w-full bg-red-500/20 hover:bg-red-500/30 text-red-200 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center disabled:opacity-50"
-                          >
-                            {registering[event._id] ? (
-                              <>
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-200 mr-2"></div>
-                                Cancelling...
-                              </>
-                            ) : (
-                              <>
-                                <TrashIcon className="w-4 h-4 mr-1" />
-                                Cancel Registration
-                              </>
-                            )}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleEventRegistration(event._id, 'join')}
-                            disabled={registering[event._id] || isFull}
-                            className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center disabled:opacity-50 ${
-                              isFull 
-                                ? 'bg-gray-500/20 text-gray-400' 
-                                : 'bg-green-500/20 hover:bg-green-500/30 text-green-200'
-                            }`}
-                          >
-                            {registering[event._id] ? (
-                              <>
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-200 mr-2"></div>
-                                Registering...
-                              </>
-                            ) : isFull ? (
-                              <>
-                                <ExclamationTriangleIcon className="w-4 h-4 mr-1" />
-                                Event Full
-                              </>
-                            ) : (
-                              <>
-                                <UserPlusIcon className="w-4 h-4 mr-1" />
-                                Register
-                              </>
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+      <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Upcoming events</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">{counts.upcoming}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Past events</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">{counts.past}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Members</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">
+            {club.members?.length || 0}
+          </p>
+        </Card>
       </div>
-    </div>
+
+      <Card className="mt-6">
+        <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
+          <SearchInput
+            className="lg:max-w-sm lg:flex-1"
+            placeholder="Search this club's events…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            aria-label="Search club events"
+          />
+          <SegmentedControl
+            options={filterOptions}
+            value={filter}
+            onChange={setFilter}
+            label="Filter events"
+            className="lg:ml-auto"
+          />
+        </div>
+      </Card>
+
+      {error ? (
+        <Alert
+          variant="error"
+          className="mt-4"
+          action={
+            <button
+              type="button"
+              onClick={loadData}
+              className="font-semibold underline underline-offset-2"
+            >
+              Retry
+            </button>
+          }
+        >
+          {error}
+        </Alert>
+      ) : null}
+      {notice ? (
+        <Alert variant="success" className="mt-4">
+          {notice}
+        </Alert>
+      ) : null}
+
+      {visibleEvents.length === 0 ? (
+        <div className="mt-6">
+          <EmptyState
+            icon={CalendarDaysIcon}
+            title={events.length === 0 ? 'No events yet' : 'No events match your filters'}
+            description={
+              events.length === 0
+                ? isOwner
+                  ? 'Create the first event for your club and it will appear here.'
+                  : 'This club has not published any events yet. Check back soon.'
+                : 'Try a different search term or switch the filter.'
+            }
+            action={
+              isOwner ? (
+                <ButtonLink to={`/create-event?clubId=${clubId}`} icon={PlusIcon}>
+                  Create first event
+                </ButtonLink>
+              ) : (
+                <ButtonLink to="/browse-events" variant="secondary">
+                  Browse all events
+                </ButtonLink>
+              )
+            }
+          />
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {visibleEvents.map((event) => {
+            const past = isPastEvent(event);
+            const registered = isRegistered(event);
+            const full = isFull(event);
+            const attendees = event.attendees?.length || 0;
+            const capacity = event.maxAttendees > 0 ? event.maxAttendees : null;
+
+            return (
+              <Card key={event._id} hover className="flex flex-col p-5">
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-[12px] border ${
+                      past
+                        ? 'border-ink-200 bg-ink-50 text-ink-500 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-400'
+                        : 'border-brand-100 bg-brand-50 text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/15 dark:text-brand-300'
+                    }`}
+                  >
+                    <span className="text-[10px] font-semibold uppercase leading-none tracking-wide">
+                      {formatMonth(event.date)}
+                    </span>
+                    <span className="text-xl font-bold leading-tight">{formatDay(event.date)}</span>
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-brand-600 dark:text-brand-400">
+                      {club.name}
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-1 text-xs text-ink-500 dark:text-ink-400">
+                      <ClockIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span className="truncate">{formatWeekdayTime(event.date)}</span>
+                    </p>
+                  </div>
+
+                  <Badge variant={past ? 'neutral' : event.isPaid ? 'warning' : 'success'}>
+                    {past ? 'Past' : event.isPaid ? 'Paid' : 'Free'}
+                  </Badge>
+                </div>
+
+                <h3 className="mt-4 line-clamp-2 text-base font-semibold text-ink-900 dark:text-white">
+                  <Link
+                    to={`/events/${event._id}`}
+                    className="hover:text-brand-600 dark:hover:text-brand-300"
+                  >
+                    {event.name}
+                  </Link>
+                </h3>
+
+                <p className="mt-1.5 line-clamp-2 min-h-[2.5rem] text-sm text-ink-500 dark:text-ink-400">
+                  {event.description || 'No description provided yet.'}
+                </p>
+
+                <div className="mt-3 space-y-1.5 text-xs text-ink-500 dark:text-ink-400">
+                  {event.location ? (
+                    <span className="flex items-center gap-2">
+                      <MapPinIcon className="h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+                      <span className="truncate">{event.location}</span>
+                    </span>
+                  ) : null}
+                  <span className="flex items-center gap-2">
+                    <UserGroupIcon className="h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+                    {attendees} attending
+                    {capacity ? <span className="text-ink-400"> · {capacity} spots</span> : null}
+                  </span>
+                  {event.isPaid ? (
+                    <span className="flex items-center gap-2">
+                      <TicketIcon className="h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+                      {event.currency || 'BDT'} {event.price}
+                    </span>
+                  ) : null}
+                </div>
+
+                {capacity ? (
+                  <div className="mt-3">
+                    <div className="h-1.5 overflow-hidden rounded-full bg-ink-100 dark:bg-ink-800">
+                      <div
+                        className={`h-full rounded-full ${full ? 'bg-danger-500' : 'bg-brand-500'}`}
+                        style={{
+                          width: `${Math.min(100, Math.round((attendees / capacity) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="mt-1 text-[11px] text-ink-400 dark:text-ink-500">
+                      {full
+                        ? 'Event is full'
+                        : `${capacity - attendees} spot${capacity - attendees === 1 ? '' : 's'} left`}
+                    </p>
+                  </div>
+                ) : null}
+
+                {isOwner ? (
+                  <div className="mt-auto flex gap-2 pt-5">
+                    <ButtonLink
+                      to={`/events/${event._id}/edit`}
+                      variant="secondary"
+                      size="sm"
+                      fullWidth
+                      icon={PencilSquareIcon}
+                    >
+                      Edit
+                    </ButtonLink>
+                    <Button
+                      variant="danger-soft"
+                      size="sm"
+                      fullWidth
+                      icon={TrashIcon}
+                      onClick={() => setDeleteTarget(event)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                ) : past ? (
+                  <div className="mt-auto pt-5">
+                    <ButtonLink
+                      to={`/events/${event._id}`}
+                      variant="secondary"
+                      size="sm"
+                      fullWidth
+                      icon={EyeIcon}
+                    >
+                      View recap
+                    </ButtonLink>
+                  </div>
+                ) : registered ? (
+                  <div className="mt-auto flex gap-2 pt-5">
+                    <ButtonLink
+                      to={`/events/${event._id}`}
+                      variant="secondary"
+                      size="sm"
+                      fullWidth
+                      icon={EyeIcon}
+                    >
+                      Details
+                    </ButtonLink>
+                    <Button
+                      variant="danger-soft"
+                      size="sm"
+                      fullWidth
+                      icon={UserMinusIcon}
+                      loading={pendingId === event._id}
+                      onClick={() => handleRegistration(event, 'leave')}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-auto flex gap-2 pt-5">
+                    <ButtonLink
+                      to={`/events/${event._id}`}
+                      variant="secondary"
+                      size="sm"
+                      fullWidth
+                      icon={EyeIcon}
+                    >
+                      Details
+                    </ButtonLink>
+                    <Button
+                      size="sm"
+                      fullWidth
+                      icon={full ? CheckCircleIcon : UserPlusIcon}
+                      disabled={full}
+                      loading={pendingId === event._id}
+                      onClick={() => handleRegistration(event, 'join')}
+                    >
+                      {full ? 'Full' : 'Register'}
+                    </Button>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {deleteTarget ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-event-title"
+        >
+          <div className="w-full max-w-md rounded-card border border-ink-200 bg-white p-6 shadow-pop dark:border-ink-800 dark:bg-ink-900">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-danger-50 text-danger-600 dark:bg-danger-600/15 dark:text-rose-400">
+              <TrashIcon className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <h2
+              id="delete-event-title"
+              className="mt-4 text-lg font-semibold text-ink-900 dark:text-white"
+            >
+              Delete “{deleteTarget.name}”?
+            </h2>
+            <p className="mt-1.5 text-sm text-ink-500 dark:text-ink-400">
+              This removes the event and its registrations. This cannot be undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button variant="danger" loading={deleting} onClick={handleDelete}>
+                Delete event
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 };
 

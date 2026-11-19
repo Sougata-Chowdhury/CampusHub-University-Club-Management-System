@@ -1,408 +1,228 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  ChatBubbleLeftRightIcon,
-  StarIcon,
-  HandThumbUpIcon,
-  TrashIcon,
-  PlusIcon,
-  UserGroupIcon,
-  CogIcon,
-  CalendarIcon,
-  UserIcon,
-  CreditCardIcon,
-  ArrowRightOnRectangleIcon,
-  SparklesIcon,
-  ChartBarIcon,
-  MagnifyingGlassIcon,
-  HomeIcon,
-} from '@heroicons/react/24/outline';
-import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
-import { formatDistanceToNow } from 'date-fns';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChatBubbleLeftRightIcon, PlusIcon, StarIcon, UserIcon } from '@heroicons/react/24/outline';
+import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid';
 import feedbackService from '../services/feedbackService';
-import NotificationBell from '../components/NotificationBell';
 import FeedbackDialog from '../components/feedback/FeedbackDialog';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  PageHeader,
+  PageSkeleton,
+  SearchInput,
+  SegmentedControl,
+  StatCard,
+} from '../ui';
+
+const filters = [
+  { value: 'all', label: 'All' },
+  { value: 'event', label: 'Events' },
+  { value: 'club', label: 'Clubs' },
+  { value: 'general', label: 'General' },
+];
+
+const statusVariant = {
+  pending: 'warning',
+  approved: 'success',
+  rejected: 'danger',
+};
+
+const timeAgo = (value) => {
+  if (!value) return '';
+  const diff = Date.now() - new Date(value).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`;
+  return `${Math.floor(months / 12)} year${Math.floor(months / 12) === 1 ? '' : 's'} ago`;
+};
+
+const Stars = ({ rating = 0 }) => (
+  <span className="flex items-center gap-0.5" aria-label={`${rating} out of 5 stars`}>
+    {[1, 2, 3, 4, 5].map((star) => (
+      <StarSolidIcon
+        key={star}
+        className={`h-4 w-4 ${star <= rating ? 'text-warning-500' : 'text-ink-200 dark:text-ink-700'}`}
+        aria-hidden="true"
+      />
+    ))}
+  </span>
+);
 
 const FeedbackPage = () => {
   const [feedback, setFeedback] = useState([]);
   const [stats, setStats] = useState(null);
+  const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [currentTab, setCurrentTab] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentUser, setCurrentUser] = useState(null);
-  const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showQuickMenu, setShowQuickMenu] = useState(false);
-  const userMenuRef = useRef(null);
-  const quickMenuRef = useRef(null);
 
-  const tabs = [
-    { label: 'All Feedback', value: 'all' },
-    { label: 'Events', value: 'event' },
-    { label: 'Clubs', value: 'club' },
-    { label: 'General', value: 'general' },
-  ];
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
-        setShowUserMenu(false);
-      }
-      if (quickMenuRef.current && !quickMenuRef.current.contains(event.target)) {
-        setShowQuickMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    fetchCurrentUser();
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [currentTab, searchTerm]);
-
-  const fetchCurrentUser = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
     try {
-      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/users/profile`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await response.json();
-      setCurrentUser(data);
-    } catch (err) {
-      console.error('Failed to fetch user:', err);
-    }
-  };
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
       const params = {
-        limit: 20,
-        ...(searchTerm && { search: searchTerm }),
-        ...(tabs[currentTab].value !== 'all' && { targetType: tabs[currentTab].value }),
+        limit: 30,
+        ...(search.trim() ? { search: search.trim() } : {}),
+        ...(filter !== 'all' ? { targetType: filter } : {}),
       };
-
-      const [feedbackResponse, statsResponse] = await Promise.all([
+      const [listResponse, statsResponse] = await Promise.all([
         feedbackService.getAllFeedback(params),
-        feedbackService.getFeedbackStats(),
+        feedbackService.getFeedbackStats().catch(() => null),
       ]);
-
-      setFeedback(feedbackResponse.data.feedback);
-      setStats(statsResponse.data);
+      setFeedback(Array.isArray(listResponse?.data?.feedback) ? listResponse.data.feedback : []);
+      setStats(statsResponse?.data || null);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to load feedback');
+      setFeedback([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, search]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    window.location.href = '/login';
-  };
+  useEffect(() => {
+    const timer = setTimeout(load, 200);
+    return () => clearTimeout(timer);
+  }, [load]);
 
-  const renderStars = (rating) => {
-    return (
-      <div className="flex items-center space-x-0.5">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <StarIconSolid
-            key={star}
-            className={`h-4 w-4 ${star <= rating ? 'text-yellow-400' : 'text-gray-400'}`}
-          />
-        ))}
-      </div>
-    );
-  };
-
-  const getStatusInfo = (status) => {
-    const statusMap = {
-      pending: { 
-        label: 'Pending',
-        bgClass: 'bg-yellow-500/20 border-yellow-400/50',
-        textClass: 'text-yellow-200'
-      },
-      approved: { 
-        label: 'Approved',
-        bgClass: 'bg-green-500/20 border-green-400/50',
-        textClass: 'text-green-200'
-      },
-    };
-    return statusMap[status] || statusMap.approved;
-  };
+  const average = useMemo(() => {
+    if (stats?.averageRating) return Number(stats.averageRating).toFixed(1);
+    if (!feedback.length) return '—';
+    const total = feedback.reduce((sum, item) => sum + (Number(item.rating) || 0), 0);
+    return (total / feedback.length).toFixed(1);
+  }, [stats, feedback]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
-      {/* Navigation Bar */}
-      <nav className="bg-purple-600 border-b border-purple-700 sticky top-0 z-50 shadow-lg">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6">
-          <div className="flex justify-between items-center h-14">
-            {/* Logo */}
-            <Link to="/dashboard" className="flex items-center space-x-2">
-              <div className="bg-purple-500 rounded-lg p-1.5">
-                <UserGroupIcon className="h-5 w-5 text-white" />
-              </div>
-              <h1 className="text-white text-base font-bold hidden sm:block">Club Portal</h1>
-            </Link>
+    <>
+      <PageHeader
+        eyebrow="Community"
+        title="Feedback"
+        description="What students think about clubs, events and the platform itself."
+        actions={
+          <Button icon={PlusIcon} onClick={() => setDialogOpen(true)}>
+            Share feedback
+          </Button>
+        }
+      />
 
-            {/* Actions */}
-            <div className="flex items-center space-x-2">
-              <NotificationBell />
-
-              {/* Quick Actions */}
-              <div className="relative" ref={quickMenuRef}>
-                <button
-                  onClick={() => setShowQuickMenu(!showQuickMenu)}
-                  className="bg-white/10 hover:bg-white/20 text-white px-2 sm:px-3 py-1.5 rounded-lg transition-all flex items-center space-x-1 border border-white/20 text-sm"
-                >
-                  <PlusIcon className="h-4 w-4" />
-                  <span className="hidden sm:inline">Quick</span>
-                </button>
-                
-                {showQuickMenu && (
-                  <div className="absolute right-0 mt-2 w-44 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50">
-                    <Link to="/create-club" className="flex px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 transition-colors items-center space-x-2" onClick={() => setShowQuickMenu(false)}>
-                      <PlusIcon className="h-4 w-4 text-blue-500" />
-                      <span>Create Club</span>
-                    </Link>
-                    <Link to="/create-event" className="flex px-3 py-2 text-sm text-gray-700 hover:bg-purple-50 transition-colors items-center space-x-2" onClick={() => setShowQuickMenu(false)}>
-                      <CalendarIcon className="h-4 w-4 text-purple-500" />
-                      <span>Create Event</span>
-                    </Link>
-                    <Link to="/announcements" className="flex px-3 py-2 text-sm text-gray-700 hover:bg-pink-50 transition-colors items-center space-x-2" onClick={() => setShowQuickMenu(false)}>
-                      <SparklesIcon className="h-4 w-4 text-pink-500" />
-                      <span>Announcements</span>
-                    </Link>
-                  </div>
-                )}
-              </div>
-
-              <Link to="/dashboard" className="bg-purple-500 hover:bg-purple-700 text-white px-2 sm:px-3 py-1.5 rounded-lg transition-all flex items-center space-x-1 border border-purple-700 text-sm">
-                <HomeIcon className="h-4 w-4" />
-                <span className="hidden sm:inline">Dashboard</span>
-              </Link>
-
-              {currentUser && currentUser.role === 'admin' && (
-                <Link to="/admin" className="bg-yellow-500/90 hover:bg-yellow-500 text-white px-2 sm:px-3 py-1.5 rounded-lg transition-all flex items-center space-x-1 font-semibold shadow-lg text-sm">
-                  <CogIcon className="h-4 w-4" />
-                  <span className="hidden sm:inline">Admin</span>
-                </Link>
-              )}
-
-              {/* User Menu */}
-              <div className="relative" ref={userMenuRef}>
-                <button
-                  onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="bg-white/10 hover:bg-white/20 text-white px-2 sm:px-3 py-1.5 rounded-lg transition-all flex items-center space-x-1 border border-white/20 text-sm"
-                >
-                  <UserIcon className="h-4 w-4" />
-                  <span className="hidden md:inline max-w-[100px] truncate">{currentUser?.firstName || 'User'}</span>
-                </button>
-                
-                {showUserMenu && (
-                  <div className="absolute right-0 mt-2 w-44 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50">
-                    <div className="px-3 py-2 border-b border-gray-200">
-                      <p className="text-xs text-gray-500">Signed in as</p>
-                      <p className="text-xs font-semibold text-gray-900 truncate">{currentUser?.email || 'Loading...'}</p>
-                    </div>
-                    <Link to="/profile" className="flex px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 transition-colors items-center space-x-2" onClick={() => setShowUserMenu(false)}>
-                      <UserIcon className="h-4 w-4 text-blue-500" />
-                      <span>Profile</span>
-                    </Link>
-                    <Link to="/payment-history" className="flex px-3 py-2 text-sm text-gray-700 hover:bg-green-50 transition-colors items-center space-x-2" onClick={() => setShowUserMenu(false)}>
-                      <CreditCardIcon className="h-4 w-4 text-green-500" />
-                      <span>Payments</span>
-                    </Link>
-                    <div className="border-t border-gray-200 my-1"></div>
-                    <button onClick={handleLogout} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center space-x-2">
-                      <ArrowRightOnRectangleIcon className="h-4 w-4" />
-                      <span>Logout</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4">
-        {/* Header */}
-        <div className="mb-4">
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Community Feedback</h1>
-          <p className="text-gray-600 text-sm mb-3">Share your thoughts and help us improve</p>
-          
-          <button
-            onClick={() => setDialogOpen(true)}
-            className="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 transition-all flex items-center space-x-2 text-sm shadow-md"
-          >
-            <PlusIcon className="h-4 w-4" />
-            <span>Submit New Feedback</span>
-          </button>
-        </div>
-
-        {/* Statistics */}
-        {stats && (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 mb-4">
-            <div className="bg-white rounded-xl p-3 border border-purple-200 shadow-lg">
-              <div className="flex items-center justify-between mb-1">
-                <ChatBubbleLeftRightIcon className="h-5 w-5 text-purple-600" />
-                <span className="text-xl font-bold text-gray-900">{stats.totalFeedback || 0}</span>
-              </div>
-              <p className="text-purple-700 text-xs font-medium">Total Reviews</p>
-            </div>
-
-            <div className="bg-white rounded-xl p-3 border border-yellow-200 shadow-lg">
-              <div className="flex items-center justify-between mb-1">
-                <StarIcon className="h-5 w-5 text-yellow-600" />
-                <span className="text-xl font-bold text-gray-900">
-                  {stats.averageRating ? stats.averageRating.toFixed(1) : 'N/A'}
-                </span>
-              </div>
-              <p className="text-yellow-700 text-xs font-medium">Average Rating</p>
-            </div>
-
-            <div className="bg-white rounded-xl p-3 border border-green-200 shadow-lg">
-              <div className="flex items-center justify-between mb-1">
-                <ChartBarIcon className="h-5 w-5 text-green-600" />
-                <span className="text-xl font-bold text-gray-900">{stats.thisMonth || 0}</span>
-              </div>
-              <p className="text-green-700 text-xs font-medium">This Month</p>
-            </div>
-          </div>
-        )}
-
-        {/* Error Alert */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3 text-red-800 text-sm font-medium">
-            {error}
-          </div>
-        )}
-
-        {/* Search and Tabs */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-lg mb-3">
-          {/* Search */}
-          <div className="p-3 border-b border-gray-200">
-            <div className="relative">
-              <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
-              <input
-                type="text"
-                placeholder="Search feedback..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-10 pr-3 py-1.5 text-gray-900 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-400"
-              />
-            </div>
-          </div>
-
-          {/* Tabs */}
-          <div className="flex overflow-x-auto">
-            {tabs.map((tab, index) => (
-              <button
-                key={index}
-                onClick={() => { setCurrentTab(index); }}
-                className={`px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
-                  currentTab === index
-                    ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
-                    : 'text-gray-600 hover:text-purple-600 hover:bg-gray-50'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Feedback List */}
-        <div className="space-y-2">
-          {loading && (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div>
-            </div>
-          )}
-
-          {!loading && feedback.length === 0 && (
-            <div className="bg-white rounded-xl p-8 text-center border border-gray-200 shadow-lg">
-              <ChatBubbleLeftRightIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-              <h3 className="text-lg font-bold text-gray-900 mb-1">No feedback found</h3>
-              <p className="text-gray-600 text-sm">Be the first to share your thoughts!</p>
-            </div>
-          )}
-
-          {!loading && feedback.map((item) => {
-            const statusInfo = getStatusInfo(item.status);
-            return (
-              <div key={item._id} className="bg-white rounded-xl p-3 border border-gray-200 shadow-lg">
-                {/* Header */}
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center space-x-2 flex-1">
-                    {renderStars(item.rating)}
-                    {item.status && (
-                      <span className={`px-2 py-0.5 rounded text-xs ${statusInfo.bgClass} ${statusInfo.textClass} border`}>
-                        {statusInfo.label}
-                      </span>
-                    )}
-                    {item.category && (
-                      <span className="px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-200 border border-purple-400/30">
-                        {item.category}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Target Info */}
-                {item.targetInfo && (
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 mb-2">
-                    <p className="text-xs text-purple-700 font-medium">
-                      Feedback for {item.targetType}:
-                    </p>
-                    <p className="text-sm font-semibold text-gray-900">{item.targetInfo.name || item.targetInfo.title}</p>
-                  </div>
-                )}
-
-                {/* Comment */}
-                <p className="text-sm text-gray-700 mb-2 leading-relaxed">{item.comment}</p>
-
-                {/* User Info */}
-                <div className="flex items-center space-x-2 mb-2 text-xs text-gray-600">
-                  <UserIcon className="h-3 w-3" />
-                  <span>
-                    {item.isAnonymous 
-                      ? 'Anonymous' 
-                      : (item.userId ? `${item.userId.firstName} ${item.userId.lastName}` : 'Unknown User')
-                    }
-                  </span>
-                </div>
-
-                {/* Admin Response */}
-                {item.adminResponse && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-2 mb-2">
-                    <p className="text-xs text-green-700 font-medium">Admin Response:</p>
-                    <p className="text-sm text-gray-900">{item.adminResponse}</p>
-                  </div>
-                )}
-
-                {/* Footer */}
-                <div className="flex justify-between items-center text-xs text-gray-600">
-                  <span>Submitted {formatDistanceToNow(new Date(item.createdAt))} ago</span>
-                  <div className="flex items-center space-x-1">
-                    <HandThumbUpIcon className="h-3 w-3" />
-                    <span>{item.helpfulVotes || 0} helpful</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        <StatCard label="Reviews" value={stats?.totalFeedback ?? feedback.length} icon={ChatBubbleLeftRightIcon} />
+        <StatCard label="Average rating" value={average} icon={StarIcon} accent="warning" />
+        <StatCard label="This month" value={stats?.thisMonth ?? '—'} icon={ChatBubbleLeftRightIcon} accent="success" />
       </div>
 
-      {/* Feedback Dialog */}
+      <Card className="mt-6">
+        <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
+          <SearchInput
+            className="lg:max-w-sm lg:flex-1"
+            placeholder="Search feedback…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            aria-label="Search feedback"
+          />
+          <SegmentedControl
+            options={filters}
+            value={filter}
+            onChange={setFilter}
+            label="Filter feedback"
+            className="lg:ml-auto"
+          />
+        </div>
+      </Card>
+
+      {error ? (
+        <Alert
+          variant="error"
+          className="mt-4"
+          action={
+            <button type="button" onClick={load} className="font-semibold underline underline-offset-2">
+              Retry
+            </button>
+          }
+        >
+          {error}
+        </Alert>
+      ) : null}
+
+      <div className="mt-5 space-y-3">
+        {loading ? (
+          <PageSkeleton />
+        ) : feedback.length === 0 ? (
+          <EmptyState
+            icon={ChatBubbleLeftRightIcon}
+            title="No feedback yet"
+            description={
+              search || filter !== 'all'
+                ? 'Try a different search or filter.'
+                : 'Be the first to share what you think about a club, an event or the app.'
+            }
+            action={
+              <Button icon={PlusIcon} onClick={() => setDialogOpen(true)}>
+                Share feedback
+              </Button>
+            }
+          />
+        ) : (
+          feedback.map((item) => (
+            <Card key={item._id} className="p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Stars rating={item.rating} />
+                    {item.category ? <Badge variant="brand">{item.category}</Badge> : null}
+                    {item.status ? (
+                      <Badge variant={statusVariant[item.status] || 'neutral'}>{item.status}</Badge>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">
+                    {item.isAnonymous
+                      ? 'Anonymous student'
+                      : [item.userId?.firstName, item.userId?.lastName].filter(Boolean).join(' ') ||
+                        'Campus student'}
+                    <span aria-hidden="true"> · </span>
+                    {timeAgo(item.createdAt)}
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 px-2.5 py-1 text-xs text-ink-500 dark:border-ink-700 dark:text-ink-400">
+                  <UserIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                  {item.helpfulVotes || 0} found helpful
+                </span>
+              </div>
+
+              {item.targetInfo ? (
+                <div className="mt-3 rounded-[10px] border border-ink-200 bg-ink-50/60 px-3 py-2 dark:border-ink-800 dark:bg-ink-800/40">
+                  <p className="text-xs font-medium text-ink-500 dark:text-ink-400">
+                    About this {item.targetType || 'item'}
+                  </p>
+                  <p className="mt-0.5 text-sm font-semibold text-ink-900 dark:text-white">
+                    {item.targetInfo.name || item.targetInfo.title}
+                  </p>
+                </div>
+              ) : null}
+
+              <p className="mt-3 text-sm leading-6 text-ink-700 dark:text-ink-200">{item.comment}</p>
+
+              {item.adminResponse ? (
+                <div className="mt-3 rounded-[10px] border border-success-100 bg-success-50 px-3 py-2 dark:border-success-600/30 dark:bg-success-600/10">
+                  <p className="text-xs font-semibold text-success-700 dark:text-emerald-200">
+                    Response from the team
+                  </p>
+                  <p className="mt-0.5 text-sm text-ink-700 dark:text-ink-200">{item.adminResponse}</p>
+                </div>
+              ) : null}
+            </Card>
+          ))
+        )}
+      </div>
+
       <FeedbackDialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
@@ -410,10 +230,11 @@ const FeedbackPage = () => {
         targetId={null}
         targetName=""
         onFeedbackSubmitted={() => {
-          fetchData();
+          setDialogOpen(false);
+          load();
         }}
       />
-    </div>
+    </>
   );
 };
 

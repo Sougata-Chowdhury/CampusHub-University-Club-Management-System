@@ -8,10 +8,10 @@ export class Feedback {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   userId: Types.ObjectId;
 
-  @Prop({ 
-    type: String, 
-    enum: ['club', 'event', 'announcement', 'general', 'course', 'instructor', 'facility'], 
-    required: true 
+  @Prop({
+    type: String,
+    enum: ['club', 'event', 'announcement', 'general', 'course', 'instructor', 'facility'],
+    required: true
   })
   targetType: string;
 
@@ -24,7 +24,7 @@ export class Feedback {
   @Prop({ required: true, maxlength: 2000 })
   comment: string;
 
-  @Prop({ 
+  @Prop({
     type: String,
     enum: ['general', 'organization', 'communication', 'facilities', 'content', 'instructor', 'other'],
     default: 'general'
@@ -40,7 +40,7 @@ export class Feedback {
   @Prop([String]) // File attachments from FileModule
   attachments: string[];
 
-  @Prop({ 
+  @Prop({
     type: String,
     enum: ['pending', 'approved', 'rejected', 'under_review'],
     default: 'pending'

@@ -38,7 +38,7 @@ export class FeedbackController {
       createFeedbackDto,
       req.user.userId,
     );
-    
+
     return {
       statusCode: HttpStatus.CREATED,
       message: 'Feedback created successfully',
@@ -54,13 +54,13 @@ export class FeedbackController {
   ) {
     // Check if user is actually admin
     const userIsAdmin = req.user.role === 'admin' && isAdmin;
-    
+
     const result = await this.feedbackService.getFeedback(
       query,
       req.user.userId,
       userIsAdmin,
     );
-    
+
     return {
       statusCode: HttpStatus.OK,
       message: 'Feedback retrieved successfully',
@@ -74,7 +74,7 @@ export class FeedbackController {
     @Query('targetId') targetId?: string,
   ) {
     const stats = await this.feedbackService.getFeedbackStats(targetType, targetId);
-    
+
     return {
       statusCode: HttpStatus.OK,
       message: 'Feedback statistics retrieved successfully',
@@ -92,13 +92,13 @@ export class FeedbackController {
       ...query,
       userId: req.user.userId,
     };
-    
+
     const result = await this.feedbackService.getFeedback(
       userQuery,
       req.user.userId,
       false,
     );
-    
+
     return {
       statusCode: HttpStatus.OK,
       message: 'Your feedback retrieved successfully',
@@ -113,13 +113,13 @@ export class FeedbackController {
     @Request() req: any,
   ) {
     const userIsAdmin = req.user.role === 'admin' && isAdmin;
-    
+
     const feedback = await this.feedbackService.getFeedbackById(
       id,
       req.user.userId,
       userIsAdmin,
     );
-    
+
     return {
       statusCode: HttpStatus.OK,
       message: 'Feedback retrieved successfully',
@@ -140,7 +140,7 @@ export class FeedbackController {
       updateStatusDto,
       req.user.userId,
     );
-    
+
     return {
       statusCode: HttpStatus.OK,
       message: 'Feedback status updated successfully',
@@ -159,7 +159,7 @@ export class FeedbackController {
       voteDto,
       req.user.userId,
     );
-    
+
     return {
       statusCode: HttpStatus.OK,
       message: 'Vote recorded successfully',
@@ -173,13 +173,13 @@ export class FeedbackController {
     @Request() req: any,
   ) {
     const isAdmin = req.user.role === 'admin';
-    
+
     await this.feedbackService.deleteFeedback(
       id,
       req.user.userId,
       isAdmin,
     );
-    
+
     return {
       statusCode: HttpStatus.OK,
       message: 'Feedback deleted successfully',
@@ -197,13 +197,13 @@ export class FeedbackController {
       ...query,
       status: 'pending',
     };
-    
+
     const result = await this.feedbackService.getFeedback(
       pendingQuery,
       undefined,
       true,
     );
-    
+
     return {
       statusCode: HttpStatus.OK,
       message: 'Pending feedback retrieved successfully',
@@ -222,7 +222,7 @@ export class FeedbackController {
       undefined,
       true,
     );
-    
+
     return {
       statusCode: HttpStatus.OK,
       message: 'All feedback retrieved successfully',
@@ -242,13 +242,13 @@ export class FeedbackController {
       targetType,
       targetId,
     };
-    
+
     const result = await this.feedbackService.getFeedback(
       targetQuery,
       req.user.userId,
       req.user.role === 'admin',
     );
-    
+
     return {
       statusCode: HttpStatus.OK,
       message: `${targetType} feedback retrieved successfully`,
@@ -262,7 +262,7 @@ export class FeedbackController {
     @Param('targetId') targetId: string,
   ) {
     const stats = await this.feedbackService.getFeedbackStats(targetType, targetId);
-    
+
     return {
       statusCode: HttpStatus.OK,
       message: `${targetType} feedback statistics retrieved successfully`,

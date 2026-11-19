@@ -1,397 +1,448 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  CalendarIcon,
-  MapPinIcon,
-  UserGroupIcon,
-  ClockIcon,
-  FireIcon,
-  CheckCircleIcon,
-  SparklesIcon,
   ArrowRightIcon,
-  UserPlusIcon,
+  CalendarDaysIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  MapPinIcon,
+  PlusIcon,
+  UserGroupIcon,
   UserMinusIcon,
-  ExclamationTriangleIcon
+  UserPlusIcon,
 } from '@heroicons/react/24/outline';
-import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
 import { eventService } from '../services/eventService';
+import {
+  Alert,
+  Badge,
+  Button,
+  ButtonLink,
+  Card,
+  EmptyState,
+  PageHeader,
+  SearchInput,
+  SegmentedControl,
+  SkeletonCard,
+} from '../ui';
 import ReportButton from './ReportButton';
 
+const filters = [
+  { value: 'all', label: 'All' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'completed', label: 'Completed' },
+];
+
+const sorts = [
+  { value: 'soonest', label: 'Soonest first' },
+  { value: 'latest', label: 'Latest first' },
+  { value: 'name', label: 'Name A–Z' },
+];
+
+const idOf = (value) => (value && typeof value === 'object' ? value._id || value.id : value);
+
+const formatMonth = (date) =>
+  new Date(date).toLocaleDateString('en-US', { month: 'short' });
+
+const formatDayNumber = (date) => new Date(date).getDate();
+
+const formatWeekdayTime = (date) =>
+  new Date(date).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
 const BrowseEvents = () => {
+  const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState('all'); // all, upcoming, completed
-  const [registering, setRegistering] = useState({});
-  const [user, setUser] = useState(null);
+  const [notice, setNotice] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState('soonest');
+  const [pendingId, setPendingId] = useState(null);
+  const noticeTimer = useRef(null);
 
-  useEffect(() => {
-    fetchEvents();
-    fetchUserInfo();
-  }, []);
+  const userId = user?._id || user?.id;
 
-  const fetchUserInfo = async () => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const response = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/users/profile`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setUser(response.data);
-      } catch (error) {
-        console.error('Failed to fetch user info:', error);
-      }
-    }
-  };
-
-  const fetchEvents = async () => {
+  const loadEvents = useCallback(async () => {
+    setLoading(true);
+    setError('');
     try {
-      const response = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/events/browse`);
-      setEvents(response.data);
-    } catch (error) {
-      setError('Failed to fetch events');
+      const data = await eventService.browseEvents();
+      setEvents(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(err.message || 'Failed to load events');
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    loadEvents();
+  }, [loadEvents]);
+
+  useEffect(() => () => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+  }, []);
+
+  const showNotice = (message) => {
+    setNotice(message);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(''), 4000);
   };
 
-  const handleEventRegistration = async (eventId, action) => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setError('Please login to register for events');
-      return;
+  const isRegistered = (event) =>
+    Boolean(userId) &&
+    (event.attendees || []).some((attendee) => idOf(attendee) === userId);
+
+  const isFull = (event) =>
+    event.maxAttendees > 0 && (event.attendees?.length || 0) >= event.maxAttendees;
+
+  const counts = useMemo(
+    () => ({
+      all: events.length,
+      upcoming: events.filter((event) => event.status !== 'completed').length,
+      completed: events.filter((event) => event.status === 'completed').length,
+    }),
+    [events],
+  );
+
+  const visibleEvents = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    let result = events;
+
+    if (filter === 'upcoming') result = result.filter((event) => event.status !== 'completed');
+    if (filter === 'completed') result = result.filter((event) => event.status === 'completed');
+
+    if (term) {
+      result = result.filter((event) => {
+        const club = typeof event.clubId === 'object' ? event.clubId?.name : '';
+        return (
+          event.name?.toLowerCase().includes(term) ||
+          event.description?.toLowerCase().includes(term) ||
+          event.location?.toLowerCase().includes(term) ||
+          club?.toLowerCase().includes(term)
+        );
+      });
     }
 
-    setRegistering(prev => ({ ...prev, [eventId]: true }));
+    return [...result].sort((a, b) => {
+      if (sort === 'name') return (a.name || '').localeCompare(b.name || '');
+      const diff = new Date(a.date || 0) - new Date(b.date || 0);
+      return sort === 'latest' ? -diff : diff;
+    });
+  }, [events, filter, search, sort]);
+
+  const handleRegistration = async (event, action) => {
+    setPendingId(event._id);
     setError('');
 
     try {
       if (action === 'join') {
-        const response = await eventService.joinEvent(eventId);
-        console.log('Registration successful:', response);
+        await eventService.joinEvent(event._id);
+        showNotice(`You are registered for ${event.name}.`);
       } else {
-        const response = await eventService.leaveEvent(eventId);
-        console.log('Unregistration successful:', response);
+        await eventService.leaveEvent(event._id);
+        showNotice(`Registration for ${event.name} was cancelled.`);
       }
 
-      // Refresh events to get updated attendee count
-      await fetchEvents();
-      
-    } catch (error) {
-      console.error(`Failed to ${action} event:`, error);
-      const errorMessage = error.response?.data?.message || error.message || `Failed to ${action} event`;
-      setError(errorMessage);
-      
-      // If already registered error, still refresh to sync UI
-      if (errorMessage.includes('already registered')) {
-        await fetchEvents();
+      // Update the local list so the button and attendee count react instantly.
+      setEvents((current) =>
+        current.map((item) => {
+          if (item._id !== event._id) return item;
+          const attendees = (item.attendees || []).filter(
+            (attendee) => idOf(attendee) !== userId,
+          );
+          if (action === 'join') attendees.push({ _id: userId });
+          return { ...item, attendees };
+        }),
+      );
+    } catch (err) {
+      const message = err.message || `Could not ${action === 'join' ? 'register for' : 'cancel'} this event`;
+      setError(message);
+
+      // Registration state can drift if the request failed after the write.
+      if (message.toLowerCase().includes('already registered')) {
+        loadEvents();
       }
     } finally {
-      setRegistering(prev => ({ ...prev, [eventId]: false }));
+      setPendingId(null);
     }
   };
 
-  const isUserRegistered = (event) => {
-    if (!user || !event.attendees) return false;
-    
-    const userId = user._id || user.id;
-    return event.attendees.some(attendee => {
-      const attendeeId = typeof attendee === 'string' ? attendee : (attendee._id || attendee.id);
-      return attendeeId === userId;
-    });
-  };
+  const filterOptions = filters.map((option) => ({
+    ...option,
+    count: counts[option.value],
+  }));
 
-  const isEventFull = (event) => {
-    return event.maxAttendees > 0 && event.attendees?.length >= event.maxAttendees;
-  };
-
-  const filteredEvents = events.filter(event => {
-    if (filter === 'upcoming') return event.status === 'upcoming';
-    if (filter === 'completed') return event.status === 'completed';
-    return true;
-  });
-
-  const getStatusBadge = (status, timeUntil) => {
-    if (status === 'completed') {
-      return (
-        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-gray-100 border border-gray-300 text-gray-700">
-          <CheckCircleIcon className="w-4 h-4 mr-1" />
-          Completed
-        </span>
-      );
-    }
-    
-    return (
-      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-purple-50 border border-purple-200 text-purple-900 animate-pulse">
-        <SparklesIcon className="w-4 h-4 mr-1" />
-        {timeUntil}
-      </span>
-    );
-  };
-
-  const getEventCardStyle = (status) => {
-    if (status === 'completed') {
-      return "bg-white border border-gray-200 shadow-lg rounded-3xl p-6 opacity-75 hover:opacity-90 transition-all duration-300";
-    }
-    
-    return "bg-white border border-gray-200 shadow-lg rounded-3xl p-6 hover:border-purple-300 transform hover:scale-105 transition-all duration-300 hover:shadow-xl";
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-900 text-xl">Loading events...</p>
-        </div>
-      </div>
-    );
-  }
+  const hasFilters = Boolean(search.trim()) || filter !== 'all';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
-      {/* Navigation */}
-      <nav className="bg-purple-600 border-b border-purple-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link to="/dashboard" className="text-white text-xl font-bold flex items-center">
-              <FireIcon className="w-8 h-8 mr-2 text-purple-300" />
-              University Events
-            </Link>
-            <div className="flex items-center space-x-4">
-              <Link to="/browse-clubs" className="text-white hover:text-purple-300 transition-colors">
-                Browse Clubs
-              </Link>
-              <Link to="/my-clubs" className="text-white hover:text-purple-300 transition-colors">
-                My Clubs
-              </Link>
-              <Link to="/my-events" className="text-white hover:text-purple-300 transition-colors">
-                My Events
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <>
+      <PageHeader
+        eyebrow="Discover"
+        title="Campus events"
+        description="Workshops, talks, socials and more. Register in one click and keep everything in your calendar."
+        actions={
+          <>
+            <ReportButton
+              reportType="event"
+              reportTargetId=""
+              reportTargetInfo={{
+                title: 'General event system report',
+                description: 'Report issues with the event browsing system or inappropriate content',
+              }}
+              variant="icon"
+              tooltip="Report an issue with the event system"
+            />
+            <ButtonLink to="/create-event" icon={PlusIcon}>
+              Create event
+            </ButtonLink>
+          </>
+        }
+      />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">
-            Discover Amazing Events
-          </h1>
-          <p className="text-xl text-gray-700 max-w-3xl mx-auto">
-            Join exciting events happening across campus. From workshops to social gatherings, 
-            find your next adventure here.
-          </p>
-        </div>
+      <Card className="mt-6">
+        <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
+          <SearchInput
+            className="lg:max-w-sm lg:flex-1"
+            placeholder="Search events, clubs or locations…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            aria-label="Search events"
+          />
 
-        {/* Filter Buttons */}
-        <div className="flex justify-center mb-8">
-          <div className="bg-purple-50 rounded-2xl p-2 border border-gray-200 shadow-lg">
-            <div className="flex space-x-2">
-              {[
-                { key: 'all', label: 'All Events', icon: CalendarIcon },
-                { key: 'upcoming', label: 'Upcoming', icon: SparklesIcon },
-                { key: 'completed', label: 'Completed', icon: CheckCircleIcon }
-              ].map(({ key, label, icon: Icon }) => (
-                <button
-                  key={key}
-                  onClick={() => setFilter(key)}
-                  className={`flex items-center px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
-                    filter === key
-                      ? 'bg-purple-600 text-white shadow-lg'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <Icon className="w-5 h-5 mr-2" />
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+          <SegmentedControl
+            options={filterOptions}
+            value={filter}
+            onChange={setFilter}
+            label="Filter events"
+            className="lg:ml-auto"
+          />
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-red-800">{error}</p>
-          </div>
-        )}
-
-        {/* Events Grid */}
-        {filteredEvents.length === 0 ? (
-          <div className="text-center py-16">
-            <CalendarIcon className="w-20 h-20 text-gray-400 mx-auto mb-6" />
-            <h3 className="text-2xl font-semibold text-gray-900 mb-2">No Events Found</h3>
-            <p className="text-gray-700">
-              {filter === 'all' 
-                ? 'No events are currently available.' 
-                : `No ${filter} events found.`}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredEvents.map((event) => (
-              <div key={event._id} className={getEventCardStyle(event.status)}>
-                {/* Status Badge */}
-                <div className="flex justify-between items-start mb-4">
-                  {getStatusBadge(event.status, event.timeUntil)}
-                  <div className="text-right">
-                    <p className="text-sm text-gray-600">
-                      {event.clubId?.name || 'Unknown Club'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Event Title */}
-                <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-2">
-                  {event.name}
-                </h3>
-
-                {/* Event Description */}
-                <p className="text-gray-700 mb-4 line-clamp-3">
-                  {event.description}
-                </p>
-
-                {/* Event Details */}
-                <div className="space-y-3 mb-6">
-                  <div className="flex items-center text-gray-700">
-                    <CalendarIcon className="w-5 h-5 mr-3 text-purple-600" />
-                    <span>{new Date(event.date).toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}</span>
-                  </div>
-                  
-                  <div className="flex items-center text-gray-700">
-                    <ClockIcon className="w-5 h-5 mr-3 text-purple-600" />
-                    <span>{new Date(event.date).toLocaleTimeString('en-US', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}</span>
-                  </div>
-
-                  {event.location && (
-                    <div className="flex items-center text-gray-700">
-                      <MapPinIcon className="w-5 h-5 mr-3 text-purple-600" />
-                      <span className="line-clamp-1">{event.location}</span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between text-gray-700">
-                    <div className="flex items-center">
-                      <UserGroupIcon className="w-5 h-5 mr-3 text-purple-600" />
-                      <span>{event.attendees?.length || 0} attending</span>
-                    </div>
-                    {event.maxAttendees > 0 && (
-                      <span className={`text-sm ${isEventFull(event) ? 'text-red-400' : 'text-gray-400'}`}>
-                        / {event.maxAttendees} max
-                        {isEventFull(event) && (
-                          <span className="ml-2 text-red-400">
-                            <ExclamationTriangleIcon className="w-4 h-4 inline" />
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="space-y-3">
-                  {/* Registration Button */}
-                  {user && event.status === 'upcoming' && (
-                    <div>
-                      {isUserRegistered(event) ? (
-                        <button
-                          onClick={() => handleEventRegistration(event._id, 'leave')}
-                          disabled={registering[event._id]}
-                          className="w-full inline-flex items-center justify-center px-6 py-3 rounded-xl font-medium transition-all duration-300 bg-red-600 text-white hover:bg-red-700 transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {registering[event._id] ? (
-                            <>
-                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                              Cancelling...
-                            </>
-                          ) : (
-                            <>
-                              <UserMinusIcon className="w-5 h-5 mr-2" />
-                              Cancel Registration
-                            </>
-                          )}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleEventRegistration(event._id, 'join')}
-                          disabled={registering[event._id] || isEventFull(event)}
-                          className={`w-full inline-flex items-center justify-center px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
-                            isEventFull(event)
-                              ? 'bg-gray-400 text-gray-700 cursor-not-allowed'
-                              : 'bg-purple-600 text-white hover:bg-purple-700 transform hover:scale-105 shadow-lg'
-                          } disabled:opacity-50 disabled:cursor-not-allowed`}
-                        >
-                          {registering[event._id] ? (
-                            <>
-                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                              Registering...
-                            </>
-                          ) : isEventFull(event) ? (
-                            <>
-                              <ExclamationTriangleIcon className="w-5 h-5 mr-2" />
-                              Event Full
-                            </>
-                          ) : (
-                            <>
-                              <UserPlusIcon className="w-5 h-5 mr-2" />
-                              Register for Event
-                            </>
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Past Event Message */}
-                  {event.status === 'completed' && (
-                    <div className="w-full px-6 py-3 rounded-xl bg-gray-100 border border-gray-300 text-gray-700 text-center">
-                      <CheckCircleIcon className="w-5 h-5 inline mr-2" />
-                      Event Has Ended
-                    </div>
-                  )}
-
-                  {/* View Details Button */}
-                  <Link
-                    to={`/events/${event._id}`}
-                    className={`w-full inline-flex items-center justify-center px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
-                      event.status === 'completed'
-                        ? 'bg-gray-100 border border-gray-300 text-gray-700'
-                        : 'bg-white border border-gray-300 text-gray-900 hover:bg-gray-50 hover:border-purple-300'
-                    }`}
-                  >
-                    View Details
-                    <ArrowRightIcon className="w-5 h-5 ml-2" />
-                  </Link>
-                </div>
-              </div>
+          <select
+            value={sort}
+            onChange={(event) => setSort(event.target.value)}
+            aria-label="Sort events"
+            className="h-9 shrink-0 rounded-[10px] border border-ink-200 bg-white px-3 text-sm text-ink-700 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
+          >
+            {sorts.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
             ))}
-          </div>
-        )}
-        
-        {/* Floating Report Button for General Issues */}
-        <ReportButton
-          reportType="event"
-          reportTargetId=""
-          reportTargetInfo={{ 
-            title: "General Event System Report",
-            description: "Report issues with the event browsing system or inappropriate content"
-          }}
-          variant="floating"
-          tooltip="Report an issue with the event system"
-          showPulse={false}
-        />
+          </select>
+        </div>
+      </Card>
+
+      {error ? (
+        <Alert
+          variant="error"
+          className="mt-4"
+          action={
+            <button
+              type="button"
+              onClick={loadEvents}
+              className="font-semibold underline underline-offset-2"
+            >
+              Retry
+            </button>
+          }
+        >
+          {error}
+        </Alert>
+      ) : null}
+
+      {notice ? (
+        <Alert variant="success" className="mt-4">
+          {notice}
+        </Alert>
+      ) : null}
+
+      <div className="mt-4 flex items-center justify-between">
+        <p className="text-sm text-ink-500 dark:text-ink-400">
+          {loading
+            ? 'Loading events…'
+            : `${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'} found`}
+        </p>
       </div>
-    </div>
+
+      <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {loading
+          ? Array.from({ length: 6 }).map((_, index) => <SkeletonCard key={index} />)
+          : visibleEvents.map((event) => {
+              const completed = event.status === 'completed';
+              const registered = isRegistered(event);
+              const full = isFull(event);
+              const attendees = event.attendees?.length || 0;
+              const capacity = event.maxAttendees > 0 ? event.maxAttendees : null;
+              const clubName =
+                typeof event.clubId === 'object' ? event.clubId?.name : 'Campus club';
+
+              return (
+                <Card key={event._id} hover className="flex flex-col p-5">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-[12px] border ${
+                        completed
+                          ? 'border-ink-200 bg-ink-50 text-ink-500 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-400'
+                          : 'border-brand-100 bg-brand-50 text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/15 dark:text-brand-300'
+                      }`}
+                    >
+                      <span className="text-[10px] font-semibold uppercase leading-none tracking-wide">
+                        {formatMonth(event.date)}
+                      </span>
+                      <span className="text-xl font-bold leading-tight">
+                        {formatDayNumber(event.date)}
+                      </span>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-brand-600 dark:text-brand-400">
+                        {clubName || 'Campus club'}
+                      </p>
+                      <p className="mt-0.5 flex items-center gap-1 text-xs text-ink-500 dark:text-ink-400">
+                        <ClockIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        <span className="truncate">{formatWeekdayTime(event.date)}</span>
+                      </p>
+                    </div>
+
+                    <Badge variant={completed ? 'neutral' : 'success'}>
+                      {completed ? 'Completed' : event.timeUntil || 'Upcoming'}
+                    </Badge>
+                  </div>
+
+                  <h3 className="mt-4 line-clamp-2 text-base font-semibold text-ink-900 dark:text-white">
+                    <Link
+                      to={`/events/${event._id}`}
+                      className="hover:text-brand-600 dark:hover:text-brand-300"
+                    >
+                      {event.name}
+                    </Link>
+                  </h3>
+
+                  <p className="mt-1.5 line-clamp-2 min-h-[2.5rem] text-sm text-ink-500 dark:text-ink-400">
+                    {event.description || 'No description provided yet.'}
+                  </p>
+
+                  <div className="mt-3 space-y-1.5 text-xs text-ink-500 dark:text-ink-400">
+                    {event.location ? (
+                      <span className="flex items-center gap-2">
+                        <MapPinIcon className="h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+                        <span className="truncate">{event.location}</span>
+                      </span>
+                    ) : null}
+                    <span className="flex items-center gap-2">
+                      <UserGroupIcon className="h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+                      {attendees} attending
+                      {capacity ? <span className="text-ink-400"> · {capacity} spots</span> : null}
+                    </span>
+                  </div>
+
+                  {capacity ? (
+                    <div className="mt-3">
+                      <div className="h-1.5 overflow-hidden rounded-full bg-ink-100 dark:bg-ink-800">
+                        <div
+                          className={`h-full rounded-full ${
+                            full ? 'bg-danger-500' : 'bg-brand-500'
+                          }`}
+                          style={{
+                            width: `${Math.min(100, Math.round((attendees / capacity) * 100))}%`,
+                          }}
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] text-ink-400 dark:text-ink-500">
+                        {full
+                          ? 'Event is full'
+                          : `${capacity - attendees} spot${capacity - attendees === 1 ? '' : 's'} left`}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-auto flex items-center gap-2 pt-5">
+                    {completed ? (
+                      <ButtonLink
+                        to={`/events/${event._id}`}
+                        variant="secondary"
+                        size="sm"
+                        fullWidth
+                        icon={CheckCircleIcon}
+                      >
+                        View recap
+                      </ButtonLink>
+                    ) : registered ? (
+                      <Button
+                        variant="danger-soft"
+                        size="sm"
+                        fullWidth
+                        icon={UserMinusIcon}
+                        loading={pendingId === event._id}
+                        onClick={() => handleRegistration(event, 'leave')}
+                      >
+                        Cancel registration
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        fullWidth
+                        icon={UserPlusIcon}
+                        disabled={full}
+                        loading={pendingId === event._id}
+                        onClick={() => handleRegistration(event, 'join')}
+                      >
+                        {full ? 'Event full' : 'Register'}
+                      </Button>
+                    )}
+
+                    <Link
+                      to={`/events/${event._id}`}
+                      className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-[10px] border border-ink-200 px-3 text-sm font-medium text-ink-600 transition-colors hover:border-ink-300 hover:bg-ink-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+                    >
+                      Details
+                      <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
+                    </Link>
+                  </div>
+                </Card>
+              );
+            })}
+      </div>
+
+      {!loading && visibleEvents.length === 0 ? (
+        <div className="mt-6">
+          <EmptyState
+            icon={CalendarDaysIcon}
+            title={hasFilters ? 'No events match your filters' : 'No events scheduled yet'}
+            description={
+              hasFilters
+                ? 'Try a different search term or switch back to all events.'
+                : 'Once clubs publish events they will show up here. Explore clubs to find something to join.'
+            }
+            action={
+              hasFilters ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSearch('');
+                    setFilter('all');
+                  }}
+                >
+                  Clear filters
+                </Button>
+              ) : (
+                <ButtonLink to="/browse-clubs" variant="secondary">
+                  Browse clubs
+                </ButtonLink>
+              )
+            }
+          />
+        </div>
+      ) : null}
+    </>
   );
 };
 

@@ -1,16 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  Container,
-  Paper,
-  TextField,
-  Button,
-  Typography,
-  Box,
-  Alert,
-  CircularProgress
-} from '@mui/material';
+import AuthLayout from '../layout/AuthLayout';
+import { Alert, Button, Field, Input } from '../ui';
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -18,26 +11,27 @@ const Register = () => {
     lastName: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-  };
+  const handleChange = (event) =>
+    setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setError('');
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+      setError('Passwords do not match. Please re-enter them.');
+      return;
+    }
+    if (formData.password.length < 6) {
+      setError('Choose a password with at least 6 characters.');
       return;
     }
 
@@ -45,114 +39,127 @@ const Register = () => {
     try {
       const result = await register(formData);
       if (result.success) {
-        navigate('/dashboard');
+        navigate('/dashboard', { replace: true });
       } else {
-        setError(result.error || 'Registration failed');
+        setError(result.error || 'Registration failed. Please try again.');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed');
+      setError(err.response?.data?.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Container component="main" maxWidth="xs">
-      <Box
-        sx={{
-          marginTop: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <Paper elevation={3} sx={{ padding: 4, width: '100%' }}>
-          <Typography component="h1" variant="h5" align="center" sx={{ fontWeight: 600, mb: 1 }}>
-            Create Account
-          </Typography>
-          <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 2 }}>
-            Join your academic community today
-          </Typography>
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
-            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-            
-            <TextField
-              margin="normal"
-              required
-              fullWidth
+    <AuthLayout
+      title="Create your account"
+      subtitle="Join your campus community in under a minute."
+      footer={
+        <p className="text-center text-sm text-ink-500 dark:text-ink-400">
+          Already have an account?{' '}
+          <Link
+            to="/login"
+            className="font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+          >
+            Sign in
+          </Link>
+        </p>
+      }
+    >
+      {error ? (
+        <Alert variant="error" className="mb-5">
+          {error}
+        </Alert>
+      ) : null}
+
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="First name" htmlFor="firstName" required>
+            <Input
               id="firstName"
-              label="First Name"
               name="firstName"
               autoComplete="given-name"
               autoFocus
+              required
+              placeholder="Alex"
               value={formData.firstName}
               onChange={handleChange}
             />
-            <TextField
-              margin="normal"
-              required
-              fullWidth
+          </Field>
+          <Field label="Last name" htmlFor="lastName" required>
+            <Input
               id="lastName"
-              label="Last Name"
               name="lastName"
               autoComplete="family-name"
+              required
+              placeholder="Morgan"
               value={formData.lastName}
               onChange={handleChange}
             />
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              id="email"
-              label="Email Address"
-              name="email"
-              autoComplete="email"
-              value={formData.email}
-              onChange={handleChange}
-            />
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="password"
-              label="Password"
-              type="password"
+          </Field>
+        </div>
+
+        <Field label="University email" htmlFor="email" required>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            placeholder="you@university.edu"
+            value={formData.email}
+            onChange={handleChange}
+          />
+        </Field>
+
+        <Field
+          label="Password"
+          htmlFor="password"
+          required
+          hint="Use at least 6 characters."
+        >
+          <div className="relative">
+            <Input
               id="password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
               autoComplete="new-password"
+              required
+              minLength={6}
+              placeholder="Create a password"
+              className="pr-11"
               value={formData.password}
               onChange={handleChange}
             />
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="confirmPassword"
-              label="Confirm Password"
-              type="password"
-              id="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-            />
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
+            <button
+              type="button"
+              onClick={() => setShowPassword((visible) => !visible)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-600 dark:hover:bg-ink-800 dark:hover:text-ink-200"
             >
-              {loading ? <CircularProgress size={24} /> : 'Sign Up'}
-            </Button>
-            <Box textAlign="center">
-              <Link to="/login" style={{ textDecoration: 'none' }}>
-                <Typography variant="body2" color="primary">
-                  Already have an account? Sign In
-                </Typography>
-              </Link>
-            </Box>
-          </Box>
-        </Paper>
-      </Box>
-    </Container>
+              {showPassword ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+            </button>
+          </div>
+        </Field>
+
+        <Field label="Confirm password" htmlFor="confirmPassword" required>
+          <Input
+            id="confirmPassword"
+            name="confirmPassword"
+            type={showPassword ? 'text' : 'password'}
+            autoComplete="new-password"
+            required
+            placeholder="Repeat your password"
+            value={formData.confirmPassword}
+            onChange={handleChange}
+          />
+        </Field>
+
+        <Button type="submit" size="lg" fullWidth loading={loading}>
+          {loading ? 'Creating account…' : 'Create account'}
+        </Button>
+      </form>
+    </AuthLayout>
   );
 };
 

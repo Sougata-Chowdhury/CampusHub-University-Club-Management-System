@@ -22,8 +22,7 @@ export class AdminService {
 
   // System Statistics
   async getSystemStats(): Promise<AdminStatsDto> {
-    console.log('AdminService: Getting system statistics');
-    
+
     const [
       totalUsers,
       activeUsers,
@@ -94,11 +93,10 @@ export class AdminService {
 
   // User Management
   async getAllUsers(page: number = 1, limit: number = 20, search?: string): Promise<UserManagementDto> {
-    console.log('AdminService: Getting all users for management');
-    
+
     const skip = (page - 1) * limit;
     let query = {};
-    
+
     if (search) {
       query = {
         $or: [
@@ -131,8 +129,7 @@ export class AdminService {
   }
 
   async toggleUserStatus(userId: string, adminId: string): Promise<{ message: string; user: any }> {
-    console.log('AdminService: Toggling user status', userId);
-    
+
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
@@ -162,8 +159,7 @@ export class AdminService {
   }
 
   async deleteUser(userId: string, adminId: string): Promise<{ message: string }> {
-    console.log('AdminService: Deleting user', userId);
-    
+
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
@@ -175,17 +171,17 @@ export class AdminService {
 
     // Handle user's created clubs
     const userCreatedClubs = await this.clubModel.find({ createdBy: userId });
-    
+
     for (const club of userCreatedClubs) {
       // Delete all events created by this club
       await this.eventModel.deleteMany({ clubId: club._id });
-      
+
       // Remove club from all members' joinedClubs arrays
       await this.userModel.updateMany(
         { joinedClubs: club._id },
         { $pull: { joinedClubs: club._id } }
       );
-      
+
       // Delete the club
       await this.clubModel.findByIdAndDelete(club._id);
     }
@@ -209,15 +205,14 @@ export class AdminService {
       details: `Deleted user: ${user.email} and all associated clubs/events`
     });
 
-    return { 
+    return {
       message: `User deleted successfully. ${userCreatedClubs.length} clubs and their associated events were also deleted.`
     };
   }
 
   // Club Management
   async getPendingClubs(): Promise<ClubManagementDto> {
-    console.log('AdminService: Getting pending clubs');
-    
+
     const clubs = await this.clubModel.find({ status: 'pending' })
       .populate('createdBy', 'firstName lastName email')
       .sort({ createdAt: -1 })
@@ -227,8 +222,7 @@ export class AdminService {
   }
 
   async approveClub(clubId: string, adminId: string): Promise<{ message: string; club: any }> {
-    console.log('AdminService: Approving club', clubId);
-    
+
     const club = await this.clubModel.findById(clubId).populate('createdBy', 'firstName lastName email _id');
     if (!club) {
       throw new NotFoundException('Club not found');
@@ -270,8 +264,7 @@ export class AdminService {
   }
 
   async rejectClub(clubId: string, reason: string, adminId: string): Promise<{ message: string }> {
-    console.log('AdminService: Rejecting club', clubId);
-    
+
     const club = await this.clubModel.findById(clubId);
     if (!club) {
       throw new NotFoundException('Club not found');
@@ -283,7 +276,6 @@ export class AdminService {
 
     // Delete all events associated with this club
     const deletedEvents = await this.eventModel.deleteMany({ clubId: clubId });
-    console.log(`Deleted ${deletedEvents.deletedCount} events for rejected club`);
 
     // Remove club from all members' joinedClubs arrays
     await this.userModel.updateMany(
@@ -291,9 +283,9 @@ export class AdminService {
       { $pull: { joinedClubs: clubId } }
     );
 
-    await this.clubModel.findByIdAndUpdate(clubId, { 
+    await this.clubModel.findByIdAndUpdate(clubId, {
       status: 'rejected',
-      rejectionReason: reason 
+      rejectionReason: reason
     });
 
     // Log admin activity
@@ -303,15 +295,14 @@ export class AdminService {
       details: `Rejected club: ${club.name}. Reason: ${reason}. Deleted ${deletedEvents.deletedCount} associated events.`
     });
 
-    return { 
+    return {
       message: `Club rejected successfully. ${deletedEvents.deletedCount} associated events were also deleted.`
     };
   }
 
   // System Reports
   async generateSystemReport(startDate?: Date, endDate?: Date): Promise<SystemReportDto> {
-    console.log('AdminService: Generating system report');
-    
+
     const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
     const end = endDate || new Date();
 
@@ -325,7 +316,7 @@ export class AdminService {
     ] = await Promise.all([
       this.userModel.aggregate([
         { $match: { createdAt: { $gte: start, $lte: end } } },
-        { 
+        {
           $group: {
             _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
             count: { $sum: 1 }
@@ -335,7 +326,7 @@ export class AdminService {
       ]),
       this.clubModel.aggregate([
         { $match: { createdAt: { $gte: start, $lte: end } } },
-        { 
+        {
           $group: {
             _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
             count: { $sum: 1 }
@@ -345,7 +336,7 @@ export class AdminService {
       ]),
       this.eventModel.aggregate([
         { $match: { createdAt: { $gte: start, $lte: end } } },
-        { 
+        {
           $group: {
             _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
             count: { $sum: 1 }
@@ -366,9 +357,9 @@ export class AdminService {
       ]),
       this.clubModel.aggregate([
         { $match: { status: 'approved' } },
-        { 
-          $addFields: { 
-            memberCount: { 
+        {
+          $addFields: {
+            memberCount: {
               $cond: {
                 if: { $isArray: '$members' },
                 then: { $size: '$members' },
@@ -383,9 +374,9 @@ export class AdminService {
       ]),
       this.eventModel.aggregate([
         { $match: { date: { $gte: new Date() } } },
-        { 
-          $addFields: { 
-            registrationCount: { 
+        {
+          $addFields: {
+            registrationCount: {
               $cond: {
                 if: { $isArray: '$registrations' },
                 then: { $size: '$registrations' },
@@ -440,8 +431,7 @@ export class AdminService {
 
   // Payment Management
   async getPendingPayments(): Promise<any[]> {
-    console.log('AdminService: Getting pending payments');
-    
+
     return this.paymentModel.find({ status: 'pending' })
       .populate('userId', 'firstName lastName email')
       .populate('clubId', 'name')
@@ -451,14 +441,13 @@ export class AdminService {
   }
 
   async approvePayment(paymentId: string, adminId: string): Promise<{ message: string }> {
-    console.log('AdminService: Approving payment', paymentId);
-    
+
     const payment = await this.paymentModel.findById(paymentId).populate('userId', 'firstName lastName email _id');
     if (!payment) {
       throw new NotFoundException('Payment not found');
     }
 
-    await this.paymentModel.findByIdAndUpdate(paymentId, { 
+    await this.paymentModel.findByIdAndUpdate(paymentId, {
       status: 'approved',
       approvedBy: adminId,
       approvedAt: new Date()
@@ -488,14 +477,13 @@ export class AdminService {
   }
 
   async rejectPayment(paymentId: string, reason: string, adminId: string): Promise<{ message: string }> {
-    console.log('AdminService: Rejecting payment', paymentId);
-    
+
     const payment = await this.paymentModel.findById(paymentId);
     if (!payment) {
       throw new NotFoundException('Payment not found');
     }
 
-    await this.paymentModel.findByIdAndUpdate(paymentId, { 
+    await this.paymentModel.findByIdAndUpdate(paymentId, {
       status: 'rejected',
       rejectionReason: reason,
       rejectedBy: adminId,

@@ -1,7 +1,27 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { userService } from '../services/userService';
+import { useAuth } from './AuthContext';
 
 const ThemeContext = createContext();
+
+const getInitialTheme = () => {
+  try {
+    const stored = localStorage.getItem('theme');
+    if (stored === 'light' || stored === 'dark') return stored;
+  } catch (error) {
+    // localStorage can be unavailable (private mode) — fall back to light.
+  }
+  return 'light';
+};
+
+const applyThemeToDocument = (selectedTheme) => {
+  const root = document.documentElement;
+  if (selectedTheme === 'dark') {
+    root.classList.add('dark');
+  } else {
+    root.classList.remove('dark');
+  }
+};
 
 export const useTheme = () => {
   const context = useContext(ThemeContext);
@@ -12,130 +32,76 @@ export const useTheme = () => {
 };
 
 export const ThemeProvider = ({ children }) => {
-  const [theme, setTheme] = useState('light');
-  const [language, setLanguage] = useState('en');
+  const { user } = useAuth();
+  const [theme, setTheme] = useState(getInitialTheme);
+  const [language, setLanguage] = useState(() => localStorage.getItem('language') || 'en');
   const [loading, setLoading] = useState(true);
 
-  // Load theme and language from user settings on mount
+  // Apply the class before paint so there is no flash of the wrong theme.
   useEffect(() => {
-    const loadUserPreferences = async () => {
-      try {
-        if (userService.isAuthenticated()) {
-          const userProfile = await userService.getUserProfile();
-          const userTheme = userProfile?.settings?.theme || 'light';
-          const userLanguage = userProfile?.settings?.language || 'en';
-          
-          setTheme(userTheme);
-          setLanguage(userLanguage);
-          
-          // Apply theme to document
-          applyThemeToDocument(userTheme);
-        } else {
-          // Load from localStorage if not authenticated
-          const savedTheme = localStorage.getItem('theme') || 'light';
-          const savedLanguage = localStorage.getItem('language') || 'en';
-          setTheme(savedTheme);
-          setLanguage(savedLanguage);
-          applyThemeToDocument(savedTheme);
-        }
-      } catch (error) {
-        console.error('Error loading user preferences:', error);
-        // Fallback to localStorage
-        const savedTheme = localStorage.getItem('theme') || 'light';
-        const savedLanguage = localStorage.getItem('language') || 'en';
-        setTheme(savedTheme);
-        setLanguage(savedLanguage);
-        applyThemeToDocument(savedTheme);
-      } finally {
-        setLoading(false);
-      }
-    };
+    applyThemeToDocument(theme);
+    try {
+      localStorage.setItem('theme', theme);
+    } catch (error) {
+      /* no-op */
+    }
+  }, [theme]);
 
-    loadUserPreferences();
+  // Adopt the saved server preference once the authenticated profile is available.
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    const serverTheme = user.settings?.theme;
+    if (serverTheme === 'light' || serverTheme === 'dark') {
+      setTheme(serverTheme);
+    }
+    const serverLanguage = user.settings?.language;
+    if (serverLanguage) setLanguage(serverLanguage);
+    setLoading(false);
+  }, [user]);
+
+  const updateTheme = useCallback(async (newTheme) => {
+    setTheme(newTheme);
+    applyThemeToDocument(newTheme);
+    if (!userService.isAuthenticated()) return;
+    try {
+      await userService.updateUserSettings({ theme: newTheme });
+    } catch (error) {
+      // Theme still applies locally if the preference sync fails.
+    }
   }, []);
 
-  const applyThemeToDocument = (selectedTheme) => {
-    const root = document.documentElement;
-    
-    if (selectedTheme === 'dark') {
-      root.classList.add('dark');
-      root.style.setProperty('--bg-primary', '#1f2937');
-      root.style.setProperty('--bg-secondary', '#374151');
-      root.style.setProperty('--text-primary', '#f9fafb');
-      root.style.setProperty('--text-secondary', '#d1d5db');
-      root.style.setProperty('--border-color', '#4b5563');
-    } else {
-      root.classList.remove('dark');
-      root.style.setProperty('--bg-primary', '#ffffff');
-      root.style.setProperty('--bg-secondary', '#f8fafc');
-      root.style.setProperty('--text-primary', '#1f2937');
-      root.style.setProperty('--text-secondary', '#6b7280');
-      root.style.setProperty('--border-color', '#e5e7eb');
-    }
-  };
-
-  const updateTheme = async (newTheme) => {
+  const updateLanguage = useCallback(async (newLanguage) => {
+    setLanguage(newLanguage);
     try {
-      setTheme(newTheme);
-      localStorage.setItem('theme', newTheme);
-      applyThemeToDocument(newTheme);
-      
-      // Update user settings if authenticated
-      if (userService.isAuthenticated()) {
-        const currentProfile = await userService.getUserProfile();
-        const updatedSettings = {
-          ...currentProfile.settings,
-          theme: newTheme
-        };
-        await userService.updateUserSettings(updatedSettings);
-      }
-    } catch (error) {
-      console.error('Error updating theme:', error);
-    }
-  };
-
-  const updateLanguage = async (newLanguage) => {
-    try {
-      setLanguage(newLanguage);
       localStorage.setItem('language', newLanguage);
-      
-      // Update user settings if authenticated
-      if (userService.isAuthenticated()) {
-        const currentProfile = await userService.getUserProfile();
-        const updatedSettings = {
-          ...currentProfile.settings,
-          language: newLanguage
-        };
-        await userService.updateUserSettings(updatedSettings);
-      }
     } catch (error) {
-      console.error('Error updating language:', error);
+      /* no-op */
     }
-  };
+    if (!userService.isAuthenticated()) return;
+    try {
+      await userService.updateUserSettings({ language: newLanguage });
+    } catch (error) {
+      /* no-op */
+    }
+  }, []);
 
-  const getThemeClasses = () => {
-    const baseClasses = 'transition-colors duration-300';
-    
-    if (theme === 'dark') {
-      return `${baseClasses} bg-gray-900 text-white min-h-screen`;
-    }
-    
-    return `${baseClasses} bg-gray-50 text-gray-900 min-h-screen`;
-  };
+  const getThemeClasses = () =>
+    theme === 'dark'
+      ? 'bg-[#0b1220] text-ink-100 min-h-screen'
+      : 'bg-ink-50 text-ink-900 min-h-screen';
 
-  const getCardClasses = () => {
-    if (theme === 'dark') {
-      return 'bg-gray-800 border-gray-700 text-white';
-    }
-    return 'bg-white border-gray-200 text-gray-900';
-  };
+  const getCardClasses = () =>
+    theme === 'dark'
+      ? 'bg-ink-900 border-ink-800 text-white'
+      : 'bg-white border-ink-200 text-ink-900';
 
-  const getInputClasses = () => {
-    if (theme === 'dark') {
-      return 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500/20';
-    }
-    return 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-purple-500 focus:ring-purple-500/20';
-  };
+  const getInputClasses = () =>
+    theme === 'dark'
+      ? 'bg-ink-900 border-ink-700 text-white placeholder-ink-500 focus:border-brand-500 focus:ring-brand-500/20'
+      : 'bg-white border-ink-200 text-ink-900 placeholder-ink-400 focus:border-brand-500 focus:ring-brand-500/20';
 
   const value = {
     theme,
@@ -146,12 +112,10 @@ export const ThemeProvider = ({ children }) => {
     getThemeClasses,
     getCardClasses,
     getInputClasses,
-    isDark: theme === 'dark'
+    isDark: theme === 'dark',
   };
 
-  return (
-    <ThemeContext.Provider value={value}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 };
+
+export default ThemeContext;

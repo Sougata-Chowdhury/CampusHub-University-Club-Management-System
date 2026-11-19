@@ -54,7 +54,6 @@ export class ReportController {
     @UploadedFiles() files: Express.Multer.File[],
     @Request() req,
   ): Promise<ReportResponseDto> {
-    console.log('ReportController: Creating report:', createReportDto);
 
     // Upload attachments via FileService and add URLs to the DTO
     if (files && files.length > 0) {
@@ -73,8 +72,7 @@ export class ReportController {
     page: number;
     totalPages: number;
   }> {
-    console.log('ReportController: Getting reports with query:', queryDto);
-    return this.reportService.getReports(queryDto, true);
+        return this.reportService.getReports(queryDto, true);
   }
 
   @Get('my-reports')
@@ -88,22 +86,19 @@ export class ReportController {
     page: number;
     totalPages: number;
   }> {
-    console.log('ReportController: Getting user reports for:', req.user.userId);
-    return this.reportService.getUserReports(req.user.userId, queryDto);
+        return this.reportService.getUserReports(req.user.userId, queryDto);
   }
 
   @Get('stats')
   @UseGuards(AuthGuard, AdminGuard)
   async getReportStats(): Promise<ReportStatsDto> {
-    console.log('ReportController: Getting report statistics');
-    return this.reportService.getReportStats();
+        return this.reportService.getReportStats();
   }
 
   @Get(':id')
   @UseGuards(AuthGuard, AdminGuard)
   async getReport(@Param('id') id: string): Promise<ReportResponseDto> {
-    console.log('ReportController: Getting report:', id);
-    // This will be implemented in the service if needed
+        // This will be implemented in the service if needed
     throw new BadRequestException('Not implemented yet');
   }
 
@@ -114,8 +109,7 @@ export class ReportController {
     @Body() updateDto: UpdateReportStatusDto,
     @Request() req,
   ): Promise<ReportResponseDto> {
-    console.log('ReportController: Updating report status:', id, updateDto);
-    return this.reportService.updateReportStatus(id, updateDto, req.user.userId);
+        return this.reportService.updateReportStatus(id, updateDto, req.user.userId);
   }
 
   @Post(':id/take-action')
@@ -124,8 +118,7 @@ export class ReportController {
     @Param('id') id: string,
     @Request() req,
   ): Promise<{ success: boolean; message: string }> {
-    console.log('ReportController: Taking action on reported item:', id);
-    return this.reportService.takeActionOnReportedItem(id, req.user.userId);
+        return this.reportService.takeActionOnReportedItem(id, req.user.userId);
   }
 
   @Delete(':id')
@@ -134,8 +127,7 @@ export class ReportController {
     @Param('id') id: string,
     @Request() req,
   ): Promise<{ message: string }> {
-    console.log('ReportController: Deleting report:', id);
-    await this.reportService.deleteReport(id, req.user.userId);
+        await this.reportService.deleteReport(id, req.user.userId);
     return { message: 'Report deleted successfully' };
   }
 
@@ -143,7 +135,6 @@ export class ReportController {
   async getAttachment(@Param('filename') filename: string): Promise<any> {
     // This would serve the uploaded attachment files
     // Implementation similar to file serving in FileController
-    console.log('ReportController: Serving attachment:', filename);
-    throw new BadRequestException('Attachment serving not implemented yet');
+        throw new BadRequestException('Attachment serving not implemented yet');
   }
 }

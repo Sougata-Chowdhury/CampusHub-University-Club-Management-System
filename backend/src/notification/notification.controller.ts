@@ -40,7 +40,7 @@ export class NotificationController {
         req.user.userId,
         createNotificationDto
       );
-      
+
       return {
         success: true,
         message: 'Notification created successfully',
@@ -63,7 +63,7 @@ export class NotificationController {
     try {
       // TODO: Add admin role check
       const result = await this.notificationService.createBulkNotification(bulkNotificationDto);
-      
+
       return {
         success: true,
         message: `Bulk notification sent. Sent: ${result.sent}, Failed: ${result.failed}`,
@@ -124,7 +124,7 @@ export class NotificationController {
   async getNotificationStats(@Request() req: AuthRequest) {
     try {
       const stats = await this.notificationService.getNotificationStats(req.user.userId);
-      
+
       return {
         success: true,
         message: 'Notification statistics retrieved successfully',
@@ -146,7 +146,7 @@ export class NotificationController {
   async getNotificationPreferences(@Request() req: AuthRequest) {
     try {
       const preferences = await this.notificationService.getNotificationPreferences(req.user.userId);
-      
+
       return {
         success: true,
         message: 'Notification preferences retrieved successfully',
@@ -174,7 +174,7 @@ export class NotificationController {
         req.user.userId,
         preferences
       );
-      
+
       return {
         success: true,
         message: 'Notification preferences updated successfully',
@@ -196,7 +196,7 @@ export class NotificationController {
   async markNotificationAsRead(@Request() req: AuthRequest, @Param('id') notificationId: string) {
     try {
       const notification = await this.notificationService.markAsRead(req.user.userId, notificationId);
-      
+
       return {
         success: true,
         message: 'Notification marked as read',
@@ -218,7 +218,7 @@ export class NotificationController {
   async markAllNotificationsAsRead(@Request() req: AuthRequest) {
     try {
       const result = await this.notificationService.markAllAsRead(req.user.userId);
-      
+
       return {
         success: true,
         message: `${result.modifiedCount} notifications marked as read`,
@@ -240,7 +240,7 @@ export class NotificationController {
   async deleteNotification(@Request() req: AuthRequest, @Param('id') notificationId: string) {
     try {
       await this.notificationService.deleteNotification(req.user.userId, notificationId);
-      
+
       return {
         success: true,
         message: 'Notification deleted successfully',
@@ -261,7 +261,7 @@ export class NotificationController {
   async deleteReadNotifications(@Request() req: AuthRequest) {
     try {
       const result = await this.notificationService.deleteReadNotifications(req.user.userId);
-      
+
       return {
         success: true,
         message: `${result.deletedCount} read notifications deleted`,
@@ -291,7 +291,7 @@ export class NotificationController {
         data.clubName,
         data.clubId
       );
-      
+
       return {
         success: true,
         message: 'Club approval notification created',
@@ -318,7 +318,7 @@ export class NotificationController {
         data.clubName,
         data.clubId
       );
-      
+
       return {
         success: true,
         message: 'Club join notification created',
@@ -345,7 +345,7 @@ export class NotificationController {
         data.eventName,
         data.eventId
       );
-      
+
       return {
         success: true,
         message: 'Event registration notification created',
@@ -374,7 +374,7 @@ export class NotificationController {
         data.description,
         data.paymentId
       );
-      
+
       return {
         success: true,
         message: 'Payment approval notification created',

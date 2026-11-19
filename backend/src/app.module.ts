@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { AppController } from './app.controller';
@@ -17,15 +17,25 @@ import { NotificationModule } from './notification/notification.module';
 import { FileModule } from './file/file.module';
 import { ReportModule } from './report/report.module';
 import { FeedbackModule } from './feedback/feedback.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
-      envFilePath: '../.env',
+      envFilePath: ['.env', '../.env'],
       isGlobal: true,
+      cache: true,
     }),
-    MongooseModule.forRoot(process.env.MONGODB_URI || 'mongodb://localhost:27017/university-clubs', {
-      dbName: process.env.MONGODB_DB || 'university-clubs',
+    MongooseModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        uri:
+          config.get<string>('MONGODB_URI') ||
+          config.get<string>('DATABASE_URL') ||
+          'mongodb://localhost:27017/university-clubs',
+        dbName: config.get<string>('MONGODB_DB') || 'university-clubs',
+        serverSelectionTimeoutMS: 10000,
+      }),
     }),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'uploads'),
@@ -42,6 +52,7 @@ import { FeedbackModule } from './feedback/feedback.module';
     FileModule,
     ReportModule,
     FeedbackModule,
+    DashboardModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],

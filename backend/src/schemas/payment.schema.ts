@@ -37,17 +37,17 @@ export class Payment {
   @Prop({ default: 'USD' })
   currency: string;
 
-  @Prop({ 
-    type: String, 
-    enum: Object.values(PaymentStatus), 
-    default: PaymentStatus.PENDING 
+  @Prop({
+    type: String,
+    enum: Object.values(PaymentStatus),
+    default: PaymentStatus.PENDING
   })
   status: PaymentStatus;
 
-  @Prop({ 
-    type: String, 
-    enum: Object.values(PaymentMethod), 
-    required: true 
+  @Prop({
+    type: String,
+    enum: Object.values(PaymentMethod),
+    required: true
   })
   paymentMethod: PaymentMethod;
 

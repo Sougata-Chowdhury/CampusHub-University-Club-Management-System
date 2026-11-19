@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import {
   Dialog,
   DialogTitle,
@@ -10,9 +9,6 @@ import {
   TextField,
   Rating,
   FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Box,
   Typography,
   Chip,
@@ -20,7 +16,6 @@ import {
   FormControlLabel,
   Alert,
   CircularProgress,
-  Fade,
   Zoom,
   IconButton,
   Avatar,
@@ -174,160 +169,44 @@ const FeedbackForm = ({
   const [userClubs, setUserClubs] = useState([]);
   const [selectedClub, setSelectedClub] = useState(null);
   const [feedbackType, setFeedbackType] = useState('general'); // 'general' or 'club'
-  const [currentUser, setCurrentUser] = useState(null);
   const [loadingClubs, setLoadingClubs] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      fetchCurrentUser();
-      fetchUserClubs();
-    }
-  }, [open]);
-
-  const fetchCurrentUser = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    try {
-      const response = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/users/profile`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setCurrentUser(response.data);
-    } catch (err) {
-      console.error('Failed to fetch user:', err);
-    }
-  };
-
-  const fetchUserClubs = async (retryCount = 0) => {
+  const fetchUserClubs = useCallback(async (retryCount = 0) => {
     try {
       setLoadingClubs(true);
-      console.log('FeedbackForm: Fetching user clubs...');
-      
-      // Debug authentication
-      const token = localStorage.getItem('token');
-      const user = localStorage.getItem('user');
-      console.log('FeedbackForm: Authentication debug:');
-      console.log('- Token exists:', !!token);
-      console.log('- Token length:', token ? token.length : 0);
-      console.log('- User data:', user);
-      
-      if (token) {
-        try {
-          const base64Url = token.split('.')[1];
-          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-          const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-          }).join(''));
-          const decoded = JSON.parse(jsonPayload);
-          console.log('- Decoded token:', decoded);
-          console.log('- User ID from token:', decoded.userId);
-          console.log('- Token expiry:', new Date(decoded.exp * 1000));
-          console.log('- Is token expired:', Date.now() >= decoded.exp * 1000);
-        } catch (e) {
-          console.error('- Token decode error:', e);
-        }
-      }
-      
       const response = await clubService.getMyClubs();
-      console.log('FeedbackForm: User clubs response:', response);
-      console.log('FeedbackForm: Response type:', typeof response);
-      console.log('FeedbackForm: Response keys:', Object.keys(response || {}));
-      
-      // Handle response directly like MyClubs does
+
       if (response && typeof response === 'object') {
-        console.log('FeedbackForm: Processing response directly');
-        
-        // Combine created clubs and joined clubs into one array
         const createdClubs = response.createdClubs || [];
         const joinedClubs = response.joinedClubs || [];
-        
-        console.log('FeedbackForm: Created clubs array:', createdClubs);
-        console.log('FeedbackForm: Joined clubs array:', joinedClubs);
-        console.log('FeedbackForm: Created clubs length:', createdClubs.length);
-        console.log('FeedbackForm: Joined clubs length:', joinedClubs.length);
-        
-        // Log each created club for debugging
-        createdClubs.forEach((club, index) => {
-          console.log(`FeedbackForm: Created Club ${index + 1}:`, {
-            name: club.name,
-            id: club._id,
-            status: club.status,
-            members: club.members?.length
-          });
-        });
-        
-        // Log each joined club for debugging
-        joinedClubs.forEach((club, index) => {
-          console.log(`FeedbackForm: Joined Club ${index + 1}:`, {
-            name: club.name,
-            id: club._id,
-            status: club.status,
-            members: club.members?.length
-          });
-        });
-
-        // Merge both arrays and remove duplicates (in case user is both creator and member)
         const allClubs = [...createdClubs];
-        
-        // Add joined clubs if they're not already in the created clubs array
-        joinedClubs.forEach(joinedClub => {
-          const isAlreadyIncluded = createdClubs.some(createdClub => 
-            createdClub._id === joinedClub._id
-          );
-          if (!isAlreadyIncluded) {
+        joinedClubs.forEach((joinedClub) => {
+          if (!createdClubs.some((createdClub) => createdClub._id === joinedClub._id)) {
             allClubs.push(joinedClub);
           }
         });
-
-        console.log('FeedbackForm: Total clubs found:', allClubs.length);
-        console.log('FeedbackForm: All clubs:', allClubs);
-        
-        // Additional debugging - log each club individually
-        if (allClubs.length === 0) {
-          console.warn('⚠️ No clubs found for user. This could be due to:');
-          console.warn('1. User has not created or joined any clubs');
-          console.warn('2. API response is empty');
-          console.warn('3. Data processing error');
-          console.warn('4. Authentication issue');
-        } else {
-          console.log('✅ Found clubs for user:');
-          allClubs.forEach((club, index) => {
-            console.log(`  Club ${index + 1}: ${club.name} (${club.status})`);
-          });
-        }
-        
         setUserClubs(allClubs);
       } else {
-        console.log('FeedbackForm: No club data received - response is null/undefined or not an object');
-        console.log('FeedbackForm: Full response:', response);
         setUserClubs([]);
       }
     } catch (error) {
-      console.error('FeedbackForm: Error fetching user clubs:', error);
-      console.error('FeedbackForm: Error details:', error.message);
-      console.error('FeedbackForm: Error response:', error.response);
-      console.error('FeedbackForm: Error status:', error.response?.status);
-      console.error('FeedbackForm: Error data:', error.response?.data);
-      
-      if (error.response?.status === 401) {
-        console.error('🔒 Authentication error - user might not be logged in or token expired');
-      } else if (error.response?.status === 403) {
-        console.error('🔒 Authorization error - user might not have permission');
-      } else if (error.response?.status === 500) {
-        console.error('💥 Server error - backend issue');
-      }
-      
-      // Retry logic for network errors
-      if (retryCount < 2 && (error.code === 'NETWORK_ERROR' || !error.response)) {
-        console.log(`FeedbackForm: Retrying... (attempt ${retryCount + 1})`);
-        setTimeout(() => fetchUserClubs(retryCount + 1), 1000);
+      if (retryCount < 1 && !error.response) {
+        window.setTimeout(() => fetchUserClubs(retryCount + 1), 1000);
         return;
       }
-      
       setUserClubs([]);
     } finally {
       setLoadingClubs(false);
     }
-  };  const categories = [
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      fetchUserClubs();
+    }
+  }, [fetchUserClubs, open]);
+
+  const categories = [
     { value: 'general', label: 'General', icon: '💬' },
     { value: 'facilities', label: 'Facilities', icon: '🏢' },
     { value: 'content', label: 'Content', icon: '📚' },
@@ -364,8 +243,6 @@ const FeedbackForm = ({
         targetType: feedbackType === 'club' ? 'club' : targetType,
         targetId: feedbackType === 'club' ? selectedClub?._id : targetId,
       };
-
-      console.log('FeedbackForm: Submitting feedback:', feedbackData);
 
       if (onSubmit) {
         await onSubmit(feedbackData);
@@ -501,10 +378,6 @@ const FeedbackForm = ({
                 <Alert severity="info" sx={{ mb: 2 }}>
                   <Typography variant="body2" sx={{ mb: 2 }}>
                     You are not a member of any clubs yet. To provide club feedback, you need to either:
-                  </Typography>
-                  {/* Debug info - remove in production */}
-                  <Typography variant="caption" sx={{ display: 'block', mb: 1, fontStyle: 'italic', color: 'gray' }}>
-                    Debug: Found {userClubs.length} clubs. Loading: {loadingClubs ? 'Yes' : 'No'}. API Response logged to console.
                   </Typography>
                   <Box component="ul" sx={{ pl: 2, mb: 2 }}>
                     <li>Create your own club</li>

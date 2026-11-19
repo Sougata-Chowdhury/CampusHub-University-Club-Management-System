@@ -22,7 +22,6 @@ import {
   Feedback as FeedbackIcon,
   Send as SendIcon,
   Close as CloseIcon,
-  Star as StarIcon,
 } from '@mui/icons-material';
 import { clubService } from '../../services/clubService';
 import { eventService } from '../../services/eventService';

@@ -1,522 +1,453 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { PencilIcon, CheckIcon, XMarkIcon, CameraIcon, UserCircleIcon, AcademicCapIcon, PhoneIcon, IdentificationIcon } from '@heroicons/react/24/outline';
+import React, { useEffect, useState } from 'react';
+import {
+  AcademicCapIcon,
+  CameraIcon,
+  CheckIcon,
+  EnvelopeIcon,
+  IdentificationIcon,
+  PencilSquareIcon,
+  PhoneIcon,
+  UserCircleIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
+import { useAuth } from '../contexts/AuthContext';
 import { userService } from '../services/userService';
-import { useTheme } from '../contexts/ThemeContext';
+import { resolveAssetUrl } from '../services/api';
+import {
+  Alert,
+  Avatar,
+  Badge,
+  Button,
+  ButtonLink,
+  Card,
+  CardBody,
+  CardHeader,
+  Field,
+  Input,
+  PageHeader,
+  PageSkeleton,
+  Select,
+  Textarea,
+} from '../ui';
+
+const emptyForm = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  phone: '',
+  bio: '',
+  department: '',
+  year: '',
+  studentId: '',
+};
+
+const departments = [
+  'Computer Science',
+  'Engineering',
+  'Business',
+  'Arts',
+  'Science',
+  'Mathematics',
+  'Other',
+];
+
+const years = [
+  ['1', '1st year'],
+  ['2', '2nd year'],
+  ['3', '3rd year'],
+  ['4', '4th year'],
+  ['Graduate', 'Graduate'],
+];
 
 const UserProfile = () => {
-  const { getThemeClasses, getCardClasses, getInputClasses, isDark } = useTheme();
+  const { refreshProfile } = useAuth();
   const [user, setUser] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
+  const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    bio: '',
-    department: '',
-    year: '',
-    studentId: ''
-  });
+  const [notice, setNotice] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
-    fetchUserProfile();
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const data = await userService.getUserProfile();
+        if (!active) return;
+        setUser(data);
+        setForm({
+          firstName: data?.firstName || '',
+          lastName: data?.lastName || '',
+          email: data?.email || '',
+          phone: data?.phone || '',
+          bio: data?.bio || '',
+          department: data?.department || '',
+          year: data?.year ? String(data.year) : '',
+          studentId: data?.studentId || '',
+        });
+      } catch (err) {
+        if (active) setError(err.message || 'Failed to load your profile');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const fetchUserProfile = async () => {
-    try {
-      setLoading(true);
-      const userData = await userService.getUserProfile();
-      setUser(userData);
-      setFormData({
-        firstName: userData?.firstName || '',
-        lastName: userData?.lastName || '',
-        email: userData?.email || '',
-        phone: userData?.phone || '',
-        bio: userData?.bio || '',
-        department: userData?.department || '',
-        year: userData?.year || '',
-        studentId: userData?.studentId || ''
-      });
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-      setError('Failed to load profile. Please try again.');
-    } finally {
-      setLoading(false);
+  const update = (event) => {
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
+    if (fieldErrors[name]) {
+      setFieldErrors((current) => ({ ...current, [name]: undefined }));
     }
   };
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  const validate = () => {
+    const next = {};
+    if (!form.firstName.trim()) next.firstName = 'First name is required.';
+    if (!form.lastName.trim()) next.lastName = 'Last name is required.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      next.email = 'Enter a valid email address.';
+    }
+    setFieldErrors(next);
+    return Object.keys(next).length === 0;
   };
 
   const handleSave = async () => {
+    if (!validate()) return;
+    setSaving(true);
+    setError('');
+    setNotice('');
     try {
-      setSaving(true);
-      setError('');
-      await userService.updateUserProfile(formData);
-      setUser({ ...user, ...formData });
-      setIsEditing(false);
-      setSuccess('Profile updated successfully!');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      setError('Failed to update profile. Please try again.');
+      const updated = await userService.updateUserProfile({
+        ...form,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email.trim(),
+      });
+      setUser(updated);
+      setEditing(false);
+      setNotice('Profile updated successfully.');
+      await refreshProfile();
+    } catch (err) {
+      setError(err.message || 'Failed to update your profile');
     } finally {
       setSaving(false);
     }
   };
 
   const handleCancel = () => {
-    setIsEditing(false);
-    setFormData({
+    setEditing(false);
+    setError('');
+    setFieldErrors({});
+    setForm({
       firstName: user?.firstName || '',
       lastName: user?.lastName || '',
       email: user?.email || '',
       phone: user?.phone || '',
       bio: user?.bio || '',
       department: user?.department || '',
-      year: user?.year || '',
-      studentId: user?.studentId || ''
+      year: user?.year ? String(user.year) : '',
+      studentId: user?.studentId || '',
     });
-    setError('');
   };
 
   const handleImageUpload = async (event) => {
-    const file = event.target.files[0];
+    const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
 
-    // Validate file type
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
     if (!allowedTypes.includes(file.type)) {
-      setError('Please select a valid image file (JPG, PNG, GIF)');
+      setError('Choose a JPG, PNG or GIF image.');
       return;
     }
-
-    // Validate file size (5MB)
     if (file.size > 5 * 1024 * 1024) {
-      setError('Image size must be less than 5MB');
+      setError('The image must be smaller than 5 MB.');
       return;
     }
 
+    setUploading(true);
+    setError('');
+    setNotice('');
     try {
-      setUploading(true);
-      setError('');
-      
-      const formData = new FormData();
-      formData.append('profilePicture', file);
-      
-      const updatedUser = await userService.uploadProfilePicture(formData);
-      setUser(updatedUser);
-      setSuccess('Profile picture updated successfully!');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      setError('Failed to upload image. Please try again.');
+      const body = new FormData();
+      body.append('profilePicture', file);
+      const updated = await userService.uploadProfilePicture(body);
+      setUser(updated);
+      setNotice('Profile picture updated.');
+      await refreshProfile();
+    } catch (err) {
+      setError(err.message || 'Failed to upload the image');
     } finally {
       setUploading(false);
     }
   };
 
   if (loading) {
-    return (
-      <div className={`${getThemeClasses()} flex items-center justify-center`}>
-        <div className={`${getCardClasses()} rounded-2xl p-8 shadow-xl`}>
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-          <p className={`mt-4 ${isDark ? 'text-gray-300' : 'text-gray-600'} text-center`}>Loading profile...</p>
-        </div>
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
+  const displayName =
+    [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Your profile';
+  const avatarSrc = resolveAssetUrl(user?.profilePicture);
+  const memberSince = user?.createdAt
+    ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : null;
+
   return (
-    <div className={getThemeClasses()}>
-      {/* Header with Navigation */}
-      <div className={`${getCardClasses()} border-b ${isDark ? 'border-gray-700' : 'border-purple-200'} sticky top-0 z-10`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
-              My Profile
-            </h1>
-            <div className="flex items-center space-x-4">
-              <Link
-                to="/dashboard"
-                className="px-4 py-2 text-purple-600 hover:text-purple-800 font-medium transition-colors duration-200"
-              >
-                ← Back to Dashboard
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
+    <>
+      <PageHeader
+        eyebrow="Account"
+        title="My profile"
+        description="Keep your contact and academic details up to date."
+        actions={
+          user ? (
+            editing ? (
+              <>
+                <Button variant="secondary" onClick={handleCancel} disabled={saving} icon={XMarkIcon}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSave} loading={saving} icon={CheckIcon}>
+                  Save changes
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => setEditing(true)} icon={PencilSquareIcon}>
+                Edit profile
+              </Button>
+            )
+          ) : null
+        }
+      />
 
-      <div className="max-w-4xl mx-auto p-6">
-        {/* Success Message */}
-        {success && (
-          <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
-            {success}
-          </div>
-        )}
+      {error ? (
+        <Alert variant="error" className="mt-4">
+          {error}
+        </Alert>
+      ) : null}
+      {notice ? (
+        <Alert variant="success" className="mt-4">
+          {notice}
+        </Alert>
+      ) : null}
 
-        {/* Error Message */}
-        {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-            {error}
-          </div>
-        )}
-
-        {/* Profile Card */}
-        <div className={`${getCardClasses()} rounded-3xl shadow-xl border overflow-hidden`}>
-          {/* Profile Header */}
-          <div className="relative bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 px-8 py-12">
-            <div className="absolute inset-0 bg-black/10"></div>
-            <div className="relative flex items-center space-x-6">
-              {/* Profile Picture */}
-              <div className="relative group">
-                <div className={`w-24 h-24 ${isDark ? 'bg-gray-700/50' : 'bg-white/20'} rounded-full flex items-center justify-center backdrop-blur-sm border-2 ${isDark ? 'border-gray-600' : 'border-white/30'} overflow-hidden`}>
-                  {user?.profilePicture ? (
-                    <img 
-                      src={user.profilePicture.startsWith('http') ? user.profilePicture : `http://localhost:8000${user.profilePicture}`}
-                      alt="Profile"
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        e.target.nextSibling.style.display = 'block';
-                      }}
-                    />
-                  ) : null}
-                  {!user?.profilePicture && (
-                    <UserCircleIcon className="w-16 h-16 text-white" />
-                  )}
-                  {user?.profilePicture && (
-                    <UserCircleIcon 
-                      className="w-16 h-16 text-white hidden" 
-                      style={{ display: 'none' }}
-                    />
-                  )}
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader
+            title="Personal information"
+            description={editing ? 'Fields marked with * are required.' : 'How you appear across the app.'}
+          />
+          <CardBody className="space-y-5">
+            {editing ? (
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field label="First name" htmlFor="profile-first" required error={fieldErrors.firstName}>
+                  <Input
+                    id="profile-first"
+                    name="firstName"
+                    value={form.firstName}
+                    onChange={update}
+                    invalid={Boolean(fieldErrors.firstName)}
+                    maxLength={60}
+                  />
+                </Field>
+                <Field label="Last name" htmlFor="profile-last" required error={fieldErrors.lastName}>
+                  <Input
+                    id="profile-last"
+                    name="lastName"
+                    value={form.lastName}
+                    onChange={update}
+                    invalid={Boolean(fieldErrors.lastName)}
+                    maxLength={60}
+                  />
+                </Field>
+                <Field
+                  label="Email address"
+                  htmlFor="profile-email"
+                  required
+                  error={fieldErrors.email}
+                  className="sm:col-span-2"
+                >
+                  <Input
+                    id="profile-email"
+                    name="email"
+                    type="email"
+                    value={form.email}
+                    onChange={update}
+                    invalid={Boolean(fieldErrors.email)}
+                  />
+                </Field>
+                <Field label="Phone number" htmlFor="profile-phone" className="sm:col-span-2">
+                  <Input
+                    id="profile-phone"
+                    name="phone"
+                    type="tel"
+                    value={form.phone}
+                    onChange={update}
+                    placeholder="Optional"
+                  />
+                </Field>
+                <Field label="Student ID" htmlFor="profile-student" className="sm:col-span-2">
+                  <Input
+                    id="profile-student"
+                    name="studentId"
+                    value={form.studentId}
+                    onChange={update}
+                    placeholder="Optional"
+                  />
+                </Field>
+                <Field label="Department" htmlFor="profile-department">
+                  <Select
+                    id="profile-department"
+                    name="department"
+                    value={form.department}
+                    onChange={update}
+                  >
+                    <option value="">Select department</option>
+                    {departments.map((department) => (
+                      <option key={department} value={department}>
+                        {department}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Year of study" htmlFor="profile-year">
+                  <Select id="profile-year" name="year" value={form.year} onChange={update}>
+                    <option value="">Select year</option>
+                    {years.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field
+                  label="About me"
+                  htmlFor="profile-bio"
+                  hint={`${form.bio.length}/500 characters`}
+                  className="sm:col-span-2"
+                >
+                  <Textarea
+                    id="profile-bio"
+                    name="bio"
+                    value={form.bio}
+                    onChange={update}
+                    rows={4}
+                    maxLength={500}
+                    placeholder="A short introduction — interests, hobbies, what you want to build."
+                  />
+                </Field>
+              </div>
+            ) : (
+              <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+                <InfoItem icon={UserCircleIcon} label="Full name" value={displayName} />
+                <InfoItem icon={EnvelopeIcon} label="Email address" value={user?.email || '—'} />
+                <InfoItem icon={PhoneIcon} label="Phone number" value={user?.phone || 'Not provided'} />
+                <InfoItem
+                  icon={IdentificationIcon}
+                  label="Student ID"
+                  value={user?.studentId || 'Not provided'}
+                />
+                <InfoItem
+                  icon={AcademicCapIcon}
+                  label="Department"
+                  value={user?.department || 'Not provided'}
+                />
+                <InfoItem
+                  icon={AcademicCapIcon}
+                  label="Year of study"
+                  value={
+                    user?.year
+                      ? user.year === 'Graduate'
+                        ? 'Graduate'
+                        : `Year ${user.year}`
+                      : 'Not provided'
+                  }
+                />
+                <div className="sm:col-span-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-ink-400">About</p>
+                  <p className="mt-1.5 text-sm leading-6 text-ink-700 dark:text-ink-200">
+                    {user?.bio || 'No bio yet. Add one so club owners know a little about you.'}
+                  </p>
                 </div>
-                <label className="absolute -bottom-2 -right-2 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-200 group-hover:scale-110 transform cursor-pointer">
+              </div>
+            )}
+          </CardBody>
+        </Card>
+
+        <div className="space-y-6">
+          <Card>
+            <CardBody className="flex flex-col items-center text-center">
+              <div className="relative">
+                <Avatar name={displayName} src={avatarSrc} size="xl" className="h-24 w-24 text-2xl" />
+                <label
+                  className="absolute -bottom-1 -right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-ink-200 bg-white text-ink-600 shadow-sm transition-colors hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-300 dark:hover:bg-ink-700"
+                  title="Change profile picture"
+                >
                   <input
                     type="file"
                     accept="image/jpeg,image/jpg,image/png,image/gif"
                     onChange={handleImageUpload}
-                    className="hidden"
+                    className="sr-only"
                     disabled={uploading}
                   />
                   {uploading ? (
-                    <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
                   ) : (
-                    <CameraIcon className="w-4 h-4 text-purple-600" />
+                    <CameraIcon className="h-4 w-4" aria-hidden="true" />
                   )}
                 </label>
-                {uploading && (
-                  <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-white bg-black/50 px-2 py-1 rounded whitespace-nowrap">
-                    Uploading...
-                  </div>
-                )}
               </div>
-
-              {/* Profile Info */}
-              <div className="flex-1">
-                <h2 className="text-3xl font-bold text-white mb-2">
-                  {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : 'User Profile'}
-                </h2>
-                <p className="text-purple-100 text-lg">
-                  {user?.email || 'user@example.com'}
-                </p>
-                {user?.department && (
-                  <p className="text-purple-200 mt-1">
-                    {user.department} • Year {user.year || 'N/A'}
-                  </p>
-                )}
+              <p className="mt-3 text-base font-semibold text-ink-900 dark:text-white">{displayName}</p>
+              <p className="mt-0.5 text-sm text-ink-500 dark:text-ink-400">{user?.email}</p>
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
+                {user?.role ? <Badge variant="brand">{user.role}</Badge> : null}
+                {user?.department ? <Badge variant="neutral">{user.department}</Badge> : null}
               </div>
+              {memberSince ? (
+                <p className="mt-4 text-xs text-ink-400 dark:text-ink-500">Member since {memberSince}</p>
+              ) : null}
+              <p className="mt-4 text-xs text-ink-400 dark:text-ink-500">
+                JPG, PNG or GIF · up to 5 MB
+              </p>
+            </CardBody>
+          </Card>
 
-              {/* Edit Button */}
-              <div>
-                {!isEditing ? (
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-xl flex items-center space-x-2 backdrop-blur-sm border border-white/30 transition-all duration-200 hover:scale-105"
-                  >
-                    <PencilIcon className="w-5 h-5" />
-                    <span>Edit Profile</span>
-                  </button>
-                ) : (
-                  <div className="flex space-x-3">
-                    <button
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl flex items-center space-x-2 transition-colors duration-200 disabled:opacity-50"
-                    >
-                      <CheckIcon className="w-5 h-5" />
-                      <span>{saving ? 'Saving...' : 'Save'}</span>
-                    </button>
-                    <button
-                      onClick={handleCancel}
-                      className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl flex items-center space-x-2 transition-colors duration-200"
-                    >
-                      <XMarkIcon className="w-5 h-5" />
-                      <span>Cancel</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Profile Content */}
-          <div className="p-8">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Personal Information */}
-              <div className="space-y-6">
-                <h3 className={`text-xl font-semibold flex items-center space-x-2 ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>
-                  <UserCircleIcon className="w-6 h-6 text-purple-600" />
-                  <span>Personal Information</span>
-                </h3>
-
-                <div className="space-y-4">
-                  {/* First Name */}
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                      First Name
-                    </label>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        name="firstName"
-                        value={formData.firstName}
-                        onChange={handleInputChange}
-                        className={`w-full px-4 py-3 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 ${getInputClasses()}`}
-                        placeholder="Enter your first name"
-                      />
-                    ) : (
-                      <div className={`px-4 py-3 rounded-xl border ${isDark ? 'bg-gray-800 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-900'}`}>
-                        {user?.firstName || 'Not provided'}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Last Name */}
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                      Last Name
-                    </label>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        name="lastName"
-                        value={formData.lastName}
-                        onChange={handleInputChange}
-                        className={`w-full px-4 py-3 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 ${getInputClasses()}`}
-                        placeholder="Enter your last name"
-                      />
-                    ) : (
-                      <div className={`px-4 py-3 rounded-xl border ${isDark ? 'bg-gray-800 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-900'}`}>
-                        {user?.lastName || 'Not provided'}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Email */}
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                      Email Address
-                    </label>
-                    {isEditing ? (
-                      <input
-                        type="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleInputChange}
-                        className={`w-full px-4 py-3 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 ${getInputClasses()}`}
-                        placeholder="Enter your email"
-                      />
-                    ) : (
-                      <div className={`px-4 py-3 rounded-xl border ${isDark ? 'bg-gray-800 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-900'}`}>
-                        {user?.email || 'Not provided'}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Phone */}
-                  <div>
-                    <label className={`text-sm font-medium mb-2 flex items-center space-x-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                      <PhoneIcon className="w-4 h-4 text-purple-600" />
-                      <span>Phone Number</span>
-                    </label>
-                    {isEditing ? (
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleInputChange}
-                        className={`w-full px-4 py-3 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 ${getInputClasses()}`}
-                        placeholder="Enter your phone number"
-                      />
-                    ) : (
-                      <div className={`px-4 py-3 rounded-xl border ${isDark ? 'bg-gray-800 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-900'}`}>
-                        {user?.phone || 'Not provided'}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Academic Information */}
-              <div className="space-y-6">
-                <h3 className={`text-xl font-semibold flex items-center space-x-2 ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>
-                  <AcademicCapIcon className="w-6 h-6 text-purple-600" />
-                  <span>Academic Information</span>
-                </h3>
-
-                <div className="space-y-4">
-                  {/* Student ID */}
-                  <div>
-                    <label className={`text-sm font-medium mb-2 flex items-center space-x-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                      <IdentificationIcon className="w-4 h-4 text-purple-600" />
-                      <span>Student ID</span>
-                    </label>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        name="studentId"
-                        value={formData.studentId}
-                        onChange={handleInputChange}
-                        className={`w-full px-4 py-3 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 ${getInputClasses()}`}
-                        placeholder="Enter your student ID"
-                      />
-                    ) : (
-                      <div className={`px-4 py-3 rounded-xl border ${isDark ? 'bg-gray-800 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-900'}`}>
-                        {user?.studentId || 'Not provided'}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Department */}
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                      Department
-                    </label>
-                    {isEditing ? (
-                      <select
-                        name="department"
-                        value={formData.department}
-                        onChange={handleInputChange}
-                        className={`w-full px-4 py-3 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 ${getInputClasses()}`}
-                      >
-                        <option value="">Select Department</option>
-                        <option value="Computer Science">Computer Science</option>
-                        <option value="Engineering">Engineering</option>
-                        <option value="Business">Business</option>
-                        <option value="Arts">Arts</option>
-                        <option value="Science">Science</option>
-                        <option value="Mathematics">Mathematics</option>
-                        <option value="Other">Other</option>
-                      </select>
-                    ) : (
-                      <div className={`px-4 py-3 rounded-xl border ${isDark ? 'bg-gray-800 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-900'}`}>
-                        {user?.department || 'Not provided'}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Year */}
-                  <div>
-                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                      Year of Study
-                    </label>
-                    {isEditing ? (
-                      <select
-                        name="year"
-                        value={formData.year}
-                        onChange={handleInputChange}
-                        className={`w-full px-4 py-3 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 ${getInputClasses()}`}
-                      >
-                        <option value="">Select Year</option>
-                        <option value="1">1st Year</option>
-                        <option value="2">2nd Year</option>
-                        <option value="3">3rd Year</option>
-                        <option value="4">4th Year</option>
-                        <option value="Graduate">Graduate</option>
-                      </select>
-                    ) : (
-                      <div className={`px-4 py-3 rounded-xl border ${isDark ? 'bg-gray-800 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-900'}`}>
-                        {user?.year ? `${user.year}${user.year === 'Graduate' ? '' : getOrdinalSuffix(user.year)} Year` : 'Not provided'}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Bio Section */}
-            <div className="mt-8">
-              <h3 className={`text-xl font-semibold mb-4 ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>About Me</h3>
-              {isEditing ? (
-                <textarea
-                  name="bio"
-                  value={formData.bio}
-                  onChange={handleInputChange}
-                  rows={4}
-                  className={`w-full px-4 py-3 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 resize-none ${getInputClasses()}`}
-                  placeholder="Tell us about yourself..."
-                />
-              ) : (
-                <div className={`px-6 py-4 rounded-xl border min-h-[100px] ${isDark ? 'bg-gray-800 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-900'}`}>
-                  {user?.bio || 'No bio provided yet. Click "Edit Profile" to add one!'}
-                </div>
-              )}
-            </div>
-
-            {/* Quick Stats */}
-            {!isEditing && (
-              <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-6 text-white">
-                  <div className="text-2xl font-bold">{user?.stats?.clubsJoined || 0}</div>
-                  <div className="text-purple-100">Clubs Joined</div>
-                </div>
-                <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-6 text-white">
-                  <div className="text-2xl font-bold">{user?.stats?.eventsHosted || 0}</div>
-                  <div className="text-blue-100">Events Hosted</div>
-                </div>
-                <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-xl p-6 text-white">
-                  <div className="text-2xl font-bold">{user?.stats?.leadershipRoles || 0}</div>
-                  <div className="text-indigo-100">Leadership Roles</div>
-                </div>
-              </div>
-            )}
-          </div>
+          <Card>
+            <CardHeader title="Quick links" />
+            <CardBody className="space-y-2">
+              <ButtonLink to="/my-clubs" variant="secondary" fullWidth>
+                My clubs
+              </ButtonLink>
+              <ButtonLink to="/my-events" variant="secondary" fullWidth>
+                My events
+              </ButtonLink>
+              <ButtonLink to="/settings" variant="secondary" fullWidth>
+                Account settings
+              </ButtonLink>
+            </CardBody>
+          </Card>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 
-// Helper function for ordinal suffixes
-const getOrdinalSuffix = (num) => {
-  const numStr = num.toString();
-  const lastDigit = numStr[numStr.length - 1];
-  const secondLastDigit = numStr[numStr.length - 2];
-  
-  if (secondLastDigit === '1') {
-    return 'th';
-  }
-  
-  switch (lastDigit) {
-    case '1': return 'st';
-    case '2': return 'nd';
-    case '3': return 'rd';
-    default: return 'th';
-  }
-};
+const InfoItem = ({ icon: Icon, label, value }) => (
+  <div>
+    <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-ink-400">
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      {label}
+    </p>
+    <p className="mt-1.5 text-sm font-medium text-ink-900 dark:text-white">{value}</p>
+  </div>
+);
 
 export default UserProfile;

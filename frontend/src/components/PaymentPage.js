@@ -1,19 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import axios from 'axios';
+import {
+  BanknotesIcon,
+  DocumentArrowUpIcon,
+  CheckCircleIcon,
+  CreditCardIcon,
+} from '@heroicons/react/24/outline';
 import { paymentService } from '../services/paymentService';
 import { eventService } from '../services/eventService';
-import { 
-  CreditCardIcon, 
-  BanknotesIcon, 
-  DocumentPlusIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon
-} from '@heroicons/react/24/outline';
+import api from '../services/api';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Field,
+  Input,
+  PageHeader,
+  PageSkeleton,
+  Select,
+  Textarea,
+} from '../ui';
 
 const PaymentPage = () => {
   const { eventId } = useParams();
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -22,97 +36,71 @@ const PaymentPage = () => {
   const [formData, setFormData] = useState({
     paymentMethod: 'bank_transfer',
     transactionId: '',
-    notes: ''
+    notes: '',
   });
   const [proofFile, setProofFile] = useState(null);
 
   useEffect(() => {
-    console.log('PaymentPage mounted with eventId:', eventId);
-    if (eventId) {
-      fetchEventDetails();
-    }
+    const fetchEventDetails = async () => {
+      if (!eventId) return;
+      try {
+        setLoading(true);
+        const response = await eventService.getEventById(eventId);
+        setEvent(response);
+
+        const token = localStorage.getItem('token');
+        if (token) {
+          try {
+            const { data: currentUser } = await api.get('/users/profile');
+            const userId = currentUser._id || currentUser.id;
+            const alreadyRegistered = response.attendees?.some((attendee) => {
+              const attendeeId = typeof attendee === 'string' ? attendee : attendee._id || attendee.id;
+              return String(attendeeId) === String(userId);
+            });
+            if (alreadyRegistered) {
+              setError('You are already registered for this event. Taking you back to the event…');
+              setTimeout(() => navigate(`/events/${eventId}`), 2000);
+            }
+          } catch {
+            /* registration check is best-effort */
+          }
+        }
+      } catch (err) {
+        setError(err.response?.data?.message || 'Failed to load the event details.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEventDetails();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
-  const fetchEventDetails = async () => {
-    try {
-      setLoading(true);
-      const response = await eventService.getEventById(eventId);
-      setEvent(response);
-      
-      // Check if user is already registered
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          const userResponse = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/users/profile`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const currentUser = userResponse.data;
-          const userId = currentUser._id || currentUser.id;
-          
-          const isAlreadyRegistered = response.attendees?.some(attendee => {
-            const attendeeId = typeof attendee === 'string' ? attendee : (attendee._id || attendee.id);
-            return String(attendeeId) === String(userId);
-          });
-          
-          console.log('Payment page - checking registration:', {
-            userId,
-            attendees: response.attendees,
-            isAlreadyRegistered
-          });
-          
-          if (isAlreadyRegistered) {
-            setError('You are already registered for this event');
-            setTimeout(() => {
-              navigate(`/events/${eventId}`);
-            }, 2000);
-          }
-        } catch (userErr) {
-          console.error('Failed to fetch user:', userErr);
-        }
-      }
-    } catch (err) {
-      setError('Failed to fetch event details');
-      console.error('Error fetching event:', err);
-    } finally {
-      setLoading(false);
+  const handleInputChange = (event_) => {
+    const { name, value } = event_.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleFileChange = (event_) => {
+    const file = event_.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      setError('Upload a JPEG, PNG or PDF file.');
+      return;
     }
-  };
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      // Validate file type and size
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
-      const maxSize = 5 * 1024 * 1024; // 5MB
-
-      if (!allowedTypes.includes(file.type)) {
-        setError('Please upload a valid image (JPEG, PNG) or PDF file');
-        return;
-      }
-
-      if (file.size > maxSize) {
-        setError('File size must be less than 5MB');
-        return;
-      }
-
-      setProofFile(file);
-      setError('');
+    if (file.size > 5 * 1024 * 1024) {
+      setError('The file must be smaller than 5 MB.');
+      return;
     }
+    setProofFile(file);
+    setError('');
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
+  const handleSubmit = async (event_) => {
+    event_.preventDefault();
     if (!proofFile) {
-      setError('Please upload proof of payment');
+      setError('Upload your proof of payment before submitting.');
       return;
     }
 
@@ -127,247 +115,205 @@ const PaymentPage = () => {
       paymentData.append('notes', formData.notes);
       paymentData.append('proofOfPayment', proofFile);
 
-      console.log('Submitting payment data:', {
-        eventId,
-        paymentMethod: formData.paymentMethod,
-        transactionId: formData.transactionId,
-        notes: formData.notes,
-        proofFile: proofFile.name
-      });
-
       await paymentService.createPayment(paymentData);
       setSuccess(true);
-      
-      // Redirect after a delay
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 3000);
+      setTimeout(() => navigate('/dashboard'), 3000);
     } catch (err) {
-      const errorMessage = err.response?.data?.message || err.message || 'Failed to submit payment';
-      setError(errorMessage);
-      console.error('Error submitting payment:', err);
-      
-      // If already registered, redirect to event details
-      if (errorMessage.includes('already registered') || errorMessage.includes('already paid')) {
-        setTimeout(() => {
-          navigate(`/events/${eventId}`);
-        }, 2000);
+      const message = err.response?.data?.message || err.message || 'Failed to submit payment.';
+      setError(message);
+      if (message.includes('already registered') || message.includes('already paid')) {
+        setTimeout(() => navigate(`/events/${eventId}`), 2000);
       }
     } finally {
       setSubmitting(false);
     }
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    return new Intl.NumberFormat('en-US', {
+  const formatCurrency = (amount, currency = 'USD') =>
+    new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currency.toUpperCase()
-    }).format(amount);
-  };
+      currency: (currency || 'USD').toUpperCase(),
+    }).format(amount || 0);
 
   if (loading) {
+    return <PageSkeleton />;
+  }
+
+  if (success) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900 text-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+      <div className="mx-auto max-w-lg">
+        <Card>
+          <CardBody className="flex flex-col items-center py-12 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-success-50 text-success-600 dark:bg-success-600/15 dark:text-emerald-300">
+              <CheckCircleIcon className="h-7 w-7" aria-hidden="true" />
+            </span>
+            <h1 className="mt-4 text-xl font-semibold text-ink-900 dark:text-white">Payment submitted</h1>
+            <p className="mt-2 text-sm text-ink-500 dark:text-ink-400">
+              Your proof is waiting for approval from the club organisers. You will be redirected to
+              your dashboard shortly.
+            </p>
+            <Button className="mt-6" onClick={() => navigate('/dashboard')}>
+              Back to dashboard
+            </Button>
+          </CardBody>
+        </Card>
       </div>
     );
   }
 
   if (!event) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900 text-white flex items-center justify-center">
-        <div className="text-center">
-          <ExclamationTriangleIcon className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Event Not Found</h2>
-          <p className="text-gray-400">The event you're looking for doesn't exist.</p>
-        </div>
+      <div className="mx-auto max-w-lg">
+        <Alert variant="error" title="Event not found">
+          {error || 'The event you are trying to pay for does not exist.'}
+        </Alert>
       </div>
     );
   }
 
-  if (success) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center">
-        <div className="text-center bg-white rounded-2xl p-8 border border-gray-200 shadow-xl max-w-md">
-          <CheckCircleIcon className="w-16 h-16 text-green-600 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Payment Submitted Successfully!</h2>
-          <p className="text-gray-700 mb-4">
-            Your payment has been submitted and is pending approval from the club organizers.
-          </p>
-          <p className="text-sm text-gray-600">
-            You will be redirected to the dashboard shortly...
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const clubName = event.clubId?.name || event.club?.name || 'Club event';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 p-8">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden">
-          {/* Header */}
-          <div className="bg-purple-600 p-6">
-            <div className="flex items-center space-x-3">
-              <CreditCardIcon className="w-8 h-8 text-white" />
-              <h1 className="text-2xl font-bold">Event Payment</h1>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <PageHeader
+        eyebrow="Checkout"
+        title="Event payment"
+        description="Upload your receipt so the club can confirm your place."
+      />
+
+      {error ? <Alert variant="error">{error}</Alert> : null}
+
+      <Card>
+        <CardHeader title={event.title || event.name} description={clubName} action={<Badge variant="brand">Payment required</Badge>} />
+        <CardBody>
+          <dl className="grid gap-4 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-ink-400">Event date</dt>
+              <dd className="mt-0.5 font-medium text-ink-900 dark:text-white">
+                {event.date ? new Date(event.date).toLocaleDateString() : 'To be announced'}
+              </dd>
             </div>
-          </div>
-
-          {/* Event Details */}
-          <div className="p-6 border-b border-white/10">
-            <h2 className="text-xl font-semibold mb-4">{event.name}</h2>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-gray-400">Event Date</p>
-                <p className="text-white">{new Date(event.date).toLocaleDateString()}</p>
-              </div>
-              <div>
-                <p className="text-gray-400">Location</p>
-                <p className="text-white">{event.location}</p>
-              </div>
-              <div>
-                <p className="text-gray-400">Club</p>
-                <p className="text-white">{event.club?.name}</p>
-              </div>
-              <div>
-                <p className="text-gray-400">Amount</p>
-                <p className="text-emerald-400 text-lg font-bold">
-                  {formatCurrency(event.price, event.currency)}
-                </p>
-              </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-ink-400">Location</dt>
+              <dd className="mt-0.5 font-medium text-ink-900 dark:text-white">{event.location || 'TBA'}</dd>
             </div>
-          </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-ink-400">Amount due</dt>
+              <dd className="mt-0.5 text-lg font-semibold text-brand-600 dark:text-brand-400">
+                {formatCurrency(event.price, event.currency)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-ink-400">Organiser</dt>
+              <dd className="mt-0.5 font-medium text-ink-900 dark:text-white">{clubName}</dd>
+            </div>
+          </dl>
+        </CardBody>
+      </Card>
 
-          {/* Payment Form */}
-          <form onSubmit={handleSubmit} className="p-6">
-            {error && (
-              <div className="bg-red-500/20 border border-red-400 text-red-200 px-4 py-3 rounded mb-6">
-                {error}
-              </div>
-            )}
-
-            <div className="space-y-6">
-              {/* Payment Method */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Payment Method
-                </label>
-                <select
-                  name="paymentMethod"
-                  value={formData.paymentMethod}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-emerald-500"
-                  required
-                >
-                  <option value="bank_transfer">Bank Transfer</option>
-                  <option value="cash">Cash</option>
-                  <option value="digital_wallet">Digital Wallet</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              {/* Transaction ID */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Transaction ID / Reference Number
-                </label>
-                <input
-                  type="text"
-                  name="transactionId"
-                  value={formData.transactionId}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-emerald-500"
-                  placeholder="Enter transaction ID or reference number"
-                />
-              </div>
-
-              {/* Proof of Payment */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Proof of Payment *
-                </label>
-                <div className="border-2 border-dashed border-gray-600 rounded-lg p-6">
-                  <div className="text-center">
-                    <DocumentPlusIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <div className="flex flex-col items-center">
-                      <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-colors">
-                        Choose File
-                        <input
-                          type="file"
-                          onChange={handleFileChange}
-                          accept="image/*,.pdf"
-                          className="hidden"
-                          required
-                        />
-                      </label>
-                      <p className="text-sm text-gray-400 mt-2">
-                        Upload receipt, screenshot, or payment confirmation
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Supported formats: JPEG, PNG, PDF (Max 5MB)
-                      </p>
-                    </div>
-                  </div>
-                  {proofFile && (
-                    <div className="mt-4 p-3 bg-emerald-900/20 rounded-lg">
-                      <p className="text-emerald-300 text-sm">
-                        Selected: {proofFile.name}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Additional Notes (Optional)
-                </label>
-                <textarea
-                  name="notes"
-                  value={formData.notes}
-                  onChange={handleInputChange}
-                  rows={3}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-emerald-500"
-                  placeholder="Any additional information about the payment..."
-                />
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white py-3 px-6 rounded-lg font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+      <form onSubmit={handleSubmit}>
+        <Card>
+          <CardHeader title="Payment details" description="We only accept proof uploads, no card data is stored." />
+          <CardBody className="space-y-4">
+            <Field label="Payment method" htmlFor="paymentMethod" required>
+              <Select
+                id="paymentMethod"
+                name="paymentMethod"
+                value={formData.paymentMethod}
+                onChange={handleInputChange}
+                required
               >
-                {submitting ? (
-                  <div className="flex items-center justify-center space-x-2">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    <span>Submitting Payment...</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center space-x-2">
-                    <BanknotesIcon className="w-5 h-5" />
-                    <span>Submit Payment</span>
-                  </div>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
+                <option value="bank_transfer">Bank transfer</option>
+                <option value="cash">Cash</option>
+                <option value="digital_wallet">Digital wallet</option>
+                <option value="other">Other</option>
+              </Select>
+            </Field>
 
-        {/* Payment Instructions */}
-        <div className="mt-6 bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-blue-300 mb-2">Payment Instructions</h3>
-          <div className="text-sm text-blue-200 space-y-1">
-            <p>• Make the payment using your preferred method</p>
-            <p>• Upload a clear photo/screenshot of your payment receipt</p>
-            <p>• Include transaction ID or reference number if available</p>
-            <p>• Your payment will be reviewed by club organizers</p>
-            <p>• You'll receive confirmation once payment is approved</p>
+            <Field
+              label="Transaction reference"
+              htmlFor="transactionId"
+              hint="Optional, but it speeds up manual verification."
+            >
+              <Input
+                id="transactionId"
+                name="transactionId"
+                value={formData.transactionId}
+                onChange={handleInputChange}
+                placeholder="e.g. TRX-829104"
+              />
+            </Field>
+
+            <Field
+              label="Proof of payment"
+              hint="JPEG, PNG or PDF up to 5 MB."
+              required
+            >
+              <div className="rounded-[10px] border-2 border-dashed border-ink-200 p-6 text-center dark:border-ink-700">
+                <DocumentArrowUpIcon className="mx-auto h-9 w-9 text-ink-400" aria-hidden="true" />
+                <p className="mt-3 text-sm text-ink-600 dark:text-ink-300">
+                  {proofFile ? proofFile.name : 'No file selected yet'}
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={handleFileChange}
+                  className="sr-only"
+                  aria-label="Proof of payment"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {proofFile ? 'Replace file' : 'Choose file'}
+                </Button>
+              </div>
+            </Field>
+
+            <Field label="Notes" htmlFor="notes" hint="Anything the organisers should know.">
+              <Textarea
+                id="notes"
+                name="notes"
+                rows={3}
+                value={formData.notes}
+                onChange={handleInputChange}
+                placeholder="Optional message…"
+              />
+            </Field>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-ink-100 pt-4 sm:flex-row sm:justify-end dark:border-ink-800">
+              <Button type="button" variant="secondary" onClick={() => navigate(`/events/${eventId}`)}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={submitting} icon={BanknotesIcon}>
+                Submit payment
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      </form>
+
+      <Card>
+        <CardBody>
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
+              <CreditCardIcon className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div className="text-sm text-ink-600 dark:text-ink-300">
+              <p className="font-medium text-ink-900 dark:text-white">How verification works</p>
+              <ul className="mt-1.5 list-disc space-y-1 pl-4 text-ink-500 dark:text-ink-400">
+                <li>Pay using one of the club's accepted methods.</li>
+                <li>Upload a clear photo or screenshot of the receipt.</li>
+                <li>An organiser reviews the proof and confirms your registration.</li>
+              </ul>
+            </div>
           </div>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
     </div>
   );
 };

@@ -1,136 +1,110 @@
-import axios from 'axios';
+import api from './api';
 
-const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
-
-// Create axios instance with default config
-const api = axios.create({
-  baseURL: API_BASE_URL,
-});
-
-// Add auth token to requests if available
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// Handle auth errors - only logout for invalid/expired token, not for other 401/403 errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // Only logout if it's an authentication error (invalid/expired token)
-    // Don't logout for authorization errors (e.g., already registered, past event, etc.)
-    if (error.response?.status === 401 && 
-        (error.response?.data?.message?.includes('Unauthorized') || 
-         error.response?.data?.message?.includes('token') ||
-         error.response?.data?.message?.includes('Invalid token'))) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
+const fail = (error, fallback) =>
+  new Error(error?.response?.data?.message || error?.message || fallback);
 
 export const eventService = {
-  // Get all events
+  // All active events (without computed status)
   getAllEvents: async () => {
     try {
-      const response = await api.get('/events');
-      return response.data;
+      const { data } = await api.get('/events');
+      return data;
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch events');
+      throw fail(error, 'Failed to fetch events');
     }
   },
 
-  // Get event by ID
+  // All active events with computed `status` and `timeUntil` fields
+  browseEvents: async () => {
+    try {
+      const { data } = await api.get('/events/browse');
+      return data;
+    } catch (error) {
+      throw fail(error, 'Failed to fetch events');
+    }
+  },
+
   getEventById: async (id) => {
     try {
-      const response = await api.get(`/events/${id}`);
-      return response.data;
+      const { data } = await api.get(`/events/${id}`);
+      return data;
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch event');
+      throw fail(error, 'Failed to fetch event');
     }
   },
 
-  // Get events created by current user
+  // Events the current user created for clubs they own
   getMyEvents: async () => {
     try {
-      const response = await api.get('/events/my');
-      return response.data;
+      const { data } = await api.get('/events/my-events');
+      return data;
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch your events');
+      throw fail(error, 'Failed to fetch your events');
     }
   },
 
-  // Get events user is registered for
+  // Events the current user is registered for
   getRegisteredEvents: async () => {
     try {
-      const response = await api.get('/events/registered');
-      return response.data;
+      const { data } = await api.get('/events/registered');
+      return data;
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch registered events');
+      throw fail(error, 'Failed to fetch registered events');
     }
   },
 
-  // Get events by club ID
   getEventsByClub: async (clubId) => {
     try {
-      const response = await api.get(`/events/club/${clubId}`);
-      return response.data;
+      const { data } = await api.get(`/events/club/${clubId}`);
+      return data;
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to fetch club events');
+      throw fail(error, 'Failed to fetch club events');
     }
   },
 
-  // Create new event
   createEvent: async (eventData) => {
     try {
-      const response = await api.post('/events', eventData);
-      return response.data;
+      const { data } = await api.post('/events', eventData);
+      return data;
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to create event');
+      throw fail(error, 'Failed to create event');
     }
   },
 
-  // Update event
   updateEvent: async (id, eventData) => {
     try {
-      const response = await api.put(`/events/${id}`, eventData);
-      return response.data;
+      const { data } = await api.put(`/events/${id}`, eventData);
+      return data;
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to update event');
+      throw fail(error, 'Failed to update event');
     }
   },
 
-  // Delete event
   deleteEvent: async (id) => {
     try {
       await api.delete(`/events/${id}`);
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to delete event');
+      throw fail(error, 'Failed to delete event');
     }
   },
 
-  // Join event (register)
   joinEvent: async (id) => {
     try {
-      const response = await api.post(`/events/${id}/join`);
-      return response.data;
+      const { data } = await api.post(`/events/${id}/join`);
+      return data;
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to join event');
+      throw fail(error, 'Failed to join event');
     }
   },
 
-  // Leave event (unregister)
   leaveEvent: async (id) => {
     try {
-      const response = await api.delete(`/events/${id}/leave`);
-      return response.data;
+      const { data } = await api.delete(`/events/${id}/leave`);
+      return data;
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to leave event');
+      throw fail(error, 'Failed to leave event');
     }
-  }
+  },
 };
+
+export default eventService;

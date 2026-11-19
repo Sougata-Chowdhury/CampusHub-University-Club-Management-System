@@ -26,7 +26,7 @@ export class Club {
   @Prop({ type: [{ type: Types.ObjectId, ref: 'User' }] })
   members: Types.ObjectId[];
 
-  @Prop({ 
+  @Prop({
     type: [{
       _id: { type: Types.ObjectId, auto: true },
       userId: { type: Types.ObjectId, ref: 'User' },
@@ -67,3 +67,10 @@ export class Club {
 }
 
 export const ClubSchema = SchemaFactory.createForClass(Club);
+
+// Indexes for the public listing, admin queues, ownership and membership checks.
+ClubSchema.index({ status: 1, isActive: 1, createdAt: -1 });
+ClubSchema.index({ createdBy: 1, createdAt: -1 });
+ClubSchema.index({ members: 1 });
+ClubSchema.index({ 'memberApplications.userId': 1 });
+ClubSchema.index({ category: 1, status: 1 });

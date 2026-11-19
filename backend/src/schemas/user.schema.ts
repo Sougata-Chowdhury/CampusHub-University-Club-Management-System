@@ -61,6 +61,8 @@ export class User {
       pushNotifications: { type: Boolean, default: true },
       clubNotifications: { type: Boolean, default: true },
       eventNotifications: { type: Boolean, default: true },
+      theme: { type: String, enum: ['light', 'dark'], default: 'light' },
+      language: { type: String, default: 'en' },
       interests: { type: [String], default: [] }
     },
     default: {
@@ -68,6 +70,8 @@ export class User {
       pushNotifications: true,
       clubNotifications: true,
       eventNotifications: true,
+      theme: 'light',
+      language: 'en',
       interests: []
     }
   })
@@ -76,6 +80,8 @@ export class User {
     pushNotifications: boolean;
     clubNotifications: boolean;
     eventNotifications: boolean;
+    theme: 'light' | 'dark';
+    language: string;
     interests: string[];
   };
 
@@ -108,3 +114,7 @@ UserSchema.virtual('name').get(function() {
 // Ensure virtual fields are included when converting to JSON
 UserSchema.set('toJSON', { virtuals: true });
 UserSchema.set('toObject', { virtuals: true });
+
+// Query indexes for authentication, admin lists and profile lookups.
+UserSchema.index({ role: 1, isActive: 1 });
+UserSchema.index({ createdAt: -1 });

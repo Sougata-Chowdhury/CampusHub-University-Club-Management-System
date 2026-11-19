@@ -86,7 +86,7 @@ export class FeedbackService {
     totalPages: number;
   }> {
     const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc', ...filters } = query;
-    
+
     const mongoQuery: any = {};
 
     // Apply filters
@@ -110,7 +110,7 @@ export class FeedbackService {
     if (!isAdmin && !filters.userId) {
       mongoQuery.$or = [
         { status: 'approved' },
-        { 
+        {
           userId: new Types.ObjectId(userId),
           status: { $ne: 'rejected' } // Exclude rejected feedback from user's own view
         }
@@ -230,13 +230,13 @@ export class FeedbackService {
           thisMonth: {
             $sum: {
               $cond: [
-                { 
+                {
                   $and: [
                     { $gte: ['$createdAt', startOfMonth] },
                     { $lte: ['$createdAt', endOfMonth] }
                   ]
-                }, 
-                1, 
+                },
+                1,
                 0
               ]
             }
@@ -272,9 +272,9 @@ export class FeedbackService {
     });
 
     // Get additional stats
-    const pendingReview = await this.feedbackModel.countDocuments({ 
-      ...matchQuery, 
-      status: 'pending' 
+    const pendingReview = await this.feedbackModel.countDocuments({
+      ...matchQuery,
+      status: 'pending'
     });
 
     const highRatedFeedback = stats.ratings.filter(rating => rating >= 4).length;
@@ -332,10 +332,10 @@ export class FeedbackService {
 
   private async populateTargetInfo(feedback: Feedback[]): Promise<Feedback[]> {
     const results: any[] = [];
-    
+
     for (const item of feedback) {
       const result = { ...(item as any).toObject() };
-      
+
       if (item.targetId) {
         try {
           switch (item.targetType) {
@@ -359,17 +359,17 @@ export class FeedbackService {
           result.targetInfo = null;
         }
       }
-      
+
       results.push(result);
     }
-    
+
     return results;
   }
 
   private async notifyAdmins(feedback: Feedback): Promise<void> {
     try {
       const admins = await this.userModel.find({ role: 'admin' });
-      
+
       for (const admin of admins) {
         await this.notificationService.createNotification(admin._id.toString(), {
           type: 'feedback',
@@ -418,7 +418,7 @@ export class FeedbackService {
   }
   private async validateClubMembership(userId: string, clubId: string): Promise<void> {
     const club = await this.clubModel.findById(clubId);
-    
+
     if (!club) {
       throw new NotFoundException('Club not found');
     }
@@ -432,7 +432,6 @@ export class FeedbackService {
     );
 
     // Debug short log (kept minimal)
-    console.log('CLUB VALIDATION:', { userId: userIdStr, clubId, isCreator, isMember, hasApprovedApplication });
 
     if (!isCreator && !isMember && !hasApprovedApplication) {
       throw new ForbiddenException('You can only provide feedback for clubs you are a member of');
@@ -441,7 +440,7 @@ export class FeedbackService {
 
   private async validateEventAttendance(userId: string, eventId: string): Promise<void> {
     const event = await this.eventModel.findById(eventId);
-    
+
     if (!event) {
       throw new NotFoundException('Event not found');
     }
@@ -449,7 +448,7 @@ export class FeedbackService {
     // Check if event is in the past
     const now = new Date();
     const eventDate = new Date(event.date);
-    
+
     if (eventDate >= now) {
       throw new BadRequestException('You can only provide feedback for past events');
     }

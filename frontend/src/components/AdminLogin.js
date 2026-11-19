@@ -1,150 +1,114 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { EyeIcon, EyeSlashIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
-import { authService } from '../services/authService';
+import { useAuth } from '../contexts/AuthContext';
+import AuthLayout from '../layout/AuthLayout';
+import { Alert, Button, Field, Input } from '../ui';
 
 const AdminLogin = () => {
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  });
+  const navigate = useNavigate();
+  const { login } = useAuth();
+  const [formData, setFormData] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      await authService.adminLogin(formData);
-      window.location.href = '/admin/dashboard';
-    } catch (error) {
-      setError(error.message || 'Admin login failed');
+      const result = await login(formData.email.trim(), formData.password, true);
+      if (result.success) {
+        navigate('/admin/dashboard', { replace: true });
+      } else {
+        setError(result.error || 'Invalid administrator credentials.');
+      }
+    } catch (err) {
+      setError('Admin login failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-  };
+  const handleChange = (event) =>
+    setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center p-4">
-      
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-40 animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-40 animate-pulse"></div>
-      </div>
-
-      <div className="relative z-10 w-full max-w-md">
-        <div className="bg-white rounded-3xl shadow-2xl border border-gray-200 p-8 transform transition-all duration-500 hover:scale-105">
-          {/* Logo/Header */}
-          <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-purple-600 rounded-full mx-auto mb-4 flex items-center justify-center shadow-lg">
-              <ShieldCheckIcon className="w-10 h-10 text-white" />
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Access</h1>
-            <p className="text-gray-600">Administrative portal login</p>
-            <div className="mt-4 inline-flex items-center px-3 py-1 bg-red-50 border border-red-200 rounded-full">
-              <span className="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></span>
-              <span className="text-red-700 text-xs font-medium">RESTRICTED ACCESS</span>
-            </div>
+    <AuthLayout
+      title="Administrator sign in"
+      subtitle="Restricted console for university staff."
+      footer={
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-[10px] border border-warning-100 bg-warning-50 px-4 py-3 text-xs leading-5 text-warning-700 dark:border-warning-600/30 dark:bg-warning-600/10 dark:text-amber-200">
+            <ShieldCheckIcon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>
+              This area is monitored. Administrative actions are recorded in the audit log.
+            </span>
           </div>
-
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-6">
-              <p className="text-red-800 text-sm">{error}</p>
-            </div>
-          )}
-
-          {/* Login Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-gray-700 text-sm font-medium mb-2">
-                Admin Email
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                placeholder="Enter admin email"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-700 text-sm font-medium mb-2">
-                Admin Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 pr-12"
-                  placeholder="Enter admin password"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
-                >
-                  {showPassword ? (
-                    <EyeSlashIcon className="w-5 h-5" />
-                  ) : (
-                    <EyeIcon className="w-5 h-5" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 px-6 rounded-xl font-semibold transform transition-all duration-300 hover:scale-105 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <div className="flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Authenticating...
-                </div>
-              ) : (
-                'Access Admin Panel'
-              )}
-            </button>
-          </form>
-
-          {/* Warning Notice */}
-          <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-            <p className="text-yellow-800 text-xs text-center">
-              🔒 This is a secure administrative area. All access attempts are logged.
-            </p>
-          </div>
-
-          {/* Back to User Login */}
-          <div className="mt-6 text-center">
+          <p className="text-center text-sm text-ink-500 dark:text-ink-400">
+            Not an administrator?{' '}
             <Link
               to="/login"
-              className="text-purple-600 hover:text-purple-700 text-sm transition-colors"
+              className="font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
             >
-              ← Back to User Login
+              Student sign in
             </Link>
-          </div>
+          </p>
         </div>
-      </div>
-    </div>
+      }
+    >
+      {error ? (
+        <Alert variant="error" className="mb-5">
+          {error}
+        </Alert>
+      ) : null}
+
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <Field label="Admin email" htmlFor="admin-email" required>
+          <Input
+            id="admin-email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            autoFocus
+            required
+            placeholder="admin@university.edu"
+            value={formData.email}
+            onChange={handleChange}
+          />
+        </Field>
+
+        <Field label="Password" htmlFor="admin-password" required>
+          <div className="relative">
+            <Input
+              id="admin-password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              required
+              placeholder="Enter admin password"
+              className="pr-11"
+              value={formData.password}
+              onChange={handleChange}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((visible) => !visible)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-600 dark:hover:bg-ink-800 dark:hover:text-ink-200"
+            >
+              {showPassword ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+            </button>
+          </div>
+        </Field>
+
+        <Button type="submit" size="lg" fullWidth loading={loading}>
+          {loading ? 'Authenticating…' : 'Sign in to admin console'}
+        </Button>
+      </form>
+    </AuthLayout>
   );
 };
 

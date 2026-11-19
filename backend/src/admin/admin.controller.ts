@@ -1,13 +1,13 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Put, 
-  Delete, 
-  Body, 
-  Param, 
-  Query, 
-  UseGuards, 
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
   Req,
   HttpStatus,
   HttpException,
@@ -15,11 +15,11 @@ import {
 } from '@nestjs/common';
 import { AdminGuard } from '../guards/admin.guard';
 import { AdminService } from './admin.service';
-import { 
-  SearchUsersDto, 
-  ApproveClubDto, 
-  RejectClubDto, 
-  ApprovePaymentDto, 
+import {
+  SearchUsersDto,
+  ApproveClubDto,
+  RejectClubDto,
+  ApprovePaymentDto,
   RejectPaymentDto,
   GenerateReportDto,
   CreateAnnouncementDto,
@@ -40,9 +40,8 @@ export class AdminController {
   @Get('dashboard')
   async getDashboard(@Req() req) {
     try {
-      console.log('AdminController: Getting dashboard data');
-      const stats = await this.adminService.getSystemStats();
-      
+            const stats = await this.adminService.getSystemStats();
+
       return {
         success: true,
         data: {
@@ -63,9 +62,8 @@ export class AdminController {
   @Get('stats')
   async getSystemStats() {
     try {
-      console.log('AdminController: Getting system statistics');
-      const stats = await this.adminService.getSystemStats();
-      
+            const stats = await this.adminService.getSystemStats();
+
       return {
         success: true,
         data: stats
@@ -83,10 +81,9 @@ export class AdminController {
   @Get('users')
   async getAllUsers(@Query() query: SearchUsersDto) {
     try {
-      console.log('AdminController: Getting all users');
-      const { search, page = 1, limit = 20 } = query;
+            const { search, page = 1, limit = 20 } = query;
       const result = await this.adminService.getAllUsers(page, limit, search);
-      
+
       return {
         success: true,
         data: result
@@ -103,14 +100,13 @@ export class AdminController {
   @Put('users/:userId/toggle-status')
   async toggleUserStatus(@Param('userId') userId: string, @Req() req) {
     try {
-      console.log('AdminController: Toggling user status for:', userId);
-      
+
       if (!userId) {
         throw new BadRequestException('User ID is required');
       }
 
       const result = await this.adminService.toggleUserStatus(userId, req.user.userId);
-      
+
       return {
         success: true,
         message: result.message,
@@ -131,14 +127,13 @@ export class AdminController {
   @Delete('users/:userId')
   async deleteUser(@Param('userId') userId: string, @Req() req) {
     try {
-      console.log('AdminController: Deleting user:', userId);
-      
+
       if (!userId) {
         throw new BadRequestException('User ID is required');
       }
 
       const result = await this.adminService.deleteUser(userId, req.user.userId);
-      
+
       return {
         success: true,
         message: result.message
@@ -158,8 +153,7 @@ export class AdminController {
   @Post('users/bulk-action')
   async bulkUserAction(@Body() bulkActionDto: BulkUserActionDto, @Req() req) {
     try {
-      console.log('AdminController: Performing bulk user action:', bulkActionDto.action);
-      
+
       const results: Array<{ userId: string; success: boolean; message: string }> = [];
       for (const userId of bulkActionDto.userIds) {
         try {
@@ -180,7 +174,7 @@ export class AdminController {
           results.push({ userId, success: false, message: error.message });
         }
       }
-      
+
       return {
         success: true,
         data: results
@@ -198,9 +192,8 @@ export class AdminController {
   @Get('clubs/pending')
   async getPendingClubs() {
     try {
-      console.log('AdminController: Getting pending clubs');
-      const result = await this.adminService.getPendingClubs();
-      
+            const result = await this.adminService.getPendingClubs();
+
       return {
         success: true,
         data: result.clubs
@@ -217,14 +210,13 @@ export class AdminController {
   @Put('clubs/:clubId/approve')
   async approveClub(@Param('clubId') clubId: string, @Req() req) {
     try {
-      console.log('AdminController: Approving club:', clubId);
-      
+
       if (!clubId) {
         throw new BadRequestException('Club ID is required');
       }
 
       const result = await this.adminService.approveClub(clubId, req.user.userId);
-      
+
       return {
         success: true,
         message: result.message,
@@ -245,8 +237,7 @@ export class AdminController {
   @Put('clubs/:clubId/reject')
   async rejectClub(@Param('clubId') clubId: string, @Body() rejectDto: RejectClubDto, @Req() req) {
     try {
-      console.log('AdminController: Rejecting club:', clubId);
-      
+
       if (!clubId) {
         throw new BadRequestException('Club ID is required');
       }
@@ -256,7 +247,7 @@ export class AdminController {
       }
 
       const result = await this.adminService.rejectClub(clubId, rejectDto.reason, req.user.userId);
-      
+
       return {
         success: true,
         message: result.message
@@ -277,9 +268,8 @@ export class AdminController {
   @Get('payments/pending')
   async getPendingPayments() {
     try {
-      console.log('AdminController: Getting pending payments');
-      const payments = await this.adminService.getPendingPayments();
-      
+            const payments = await this.adminService.getPendingPayments();
+
       return {
         success: true,
         data: payments
@@ -296,14 +286,13 @@ export class AdminController {
   @Put('payments/:paymentId/approve')
   async approvePayment(@Param('paymentId') paymentId: string, @Req() req) {
     try {
-      console.log('AdminController: Approving payment:', paymentId);
-      
+
       if (!paymentId) {
         throw new BadRequestException('Payment ID is required');
       }
 
       const result = await this.adminService.approvePayment(paymentId, req.user.userId);
-      
+
       return {
         success: true,
         message: result.message
@@ -323,8 +312,7 @@ export class AdminController {
   @Put('payments/:paymentId/reject')
   async rejectPayment(@Param('paymentId') paymentId: string, @Body() rejectDto: RejectPaymentDto, @Req() req) {
     try {
-      console.log('AdminController: Rejecting payment:', paymentId);
-      
+
       if (!paymentId) {
         throw new BadRequestException('Payment ID is required');
       }
@@ -334,7 +322,7 @@ export class AdminController {
       }
 
       const result = await this.adminService.rejectPayment(paymentId, rejectDto.reason, req.user.userId);
-      
+
       return {
         success: true,
         message: result.message
@@ -355,13 +343,12 @@ export class AdminController {
   @Get('reports/system')
   async generateSystemReport(@Query() query: GenerateReportDto) {
     try {
-      console.log('AdminController: Generating system report');
-      
+
       const startDate = query.startDate ? new Date(query.startDate) : undefined;
       const endDate = query.endDate ? new Date(query.endDate) : undefined;
-      
+
       const report = await this.adminService.generateSystemReport(startDate, endDate);
-      
+
       return {
         success: true,
         data: report
@@ -378,13 +365,12 @@ export class AdminController {
   @Get('analytics')
   async getAnalytics(@Query() query: AnalyticsFilterDto) {
     try {
-      console.log('AdminController: Getting analytics data');
-      
+
       const startDate = query.startDate ? new Date(query.startDate) : undefined;
       const endDate = query.endDate ? new Date(query.endDate) : undefined;
-      
+
       const analytics = await this.adminService.generateSystemReport(startDate, endDate);
-      
+
       return {
         success: true,
         data: analytics
@@ -402,10 +388,9 @@ export class AdminController {
   @Get('health')
   async getSystemHealth() {
     try {
-      console.log('AdminController: Checking system health');
-      
+
       const stats = await this.adminService.getSystemStats();
-      
+
       const health = {
         status: 'healthy',
         timestamp: new Date(),
@@ -421,7 +406,7 @@ export class AdminController {
           totalEvents: stats.totalEvents
         }
       };
-      
+
       return {
         success: true,
         data: health

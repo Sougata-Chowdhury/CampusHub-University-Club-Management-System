@@ -131,8 +131,6 @@ const ReportDialog = ({ open, onClose, type, targetId, targetTitle }) => {
         priority: formData.priority,
       };
 
-      console.log('Submitting report:', reportData); // Debug log
-
       await reportService.createReport(reportData, attachments);
       
       setSuccess('Report submitted successfully! We will review it and take appropriate action.');

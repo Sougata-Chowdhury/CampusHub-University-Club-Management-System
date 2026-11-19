@@ -482,7 +482,6 @@ export const LanguageProvider = ({ children }) => {
       });
       window.dispatchEvent(event);
       
-      console.log(`Language changed to: ${newLanguage}`);
     } catch (error) {
       console.error('Error updating language:', error);
     }

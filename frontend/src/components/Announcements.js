@@ -1,424 +1,328 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import axios from 'axios';
-import { 
-  SpeakerWaveIcon,
-  PlusIcon,
-  HeartIcon,
+import React, { useEffect, useRef, useState } from 'react';
+import {
   ChatBubbleLeftIcon,
   ClockIcon,
-  UserGroupIcon,
+  HeartIcon,
   PencilIcon,
+  PlusIcon,
+  SpeakerWaveIcon,
   TrashIcon,
-  PhotoIcon,
-  ArrowLeftIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolidIcon } from '@heroicons/react/24/solid';
+import { useAuth } from '../contexts/AuthContext';
 import { announcementService } from '../services/announcementService';
+import { resolveAssetUrl } from '../services/api';
+import {
+  Alert,
+  Avatar,
+  Button,
+  ButtonLink,
+  Card,
+  EmptyState,
+  PageHeader,
+  SegmentedControl,
+  Skeleton,
+  Textarea,
+} from '../ui';
 import ReportButton from './ReportButton';
 
+const PAGE_SIZE = 10;
+
+const relativeTime = (value) => {
+  const date = new Date(value);
+  const now = new Date();
+  const diffHours = (now - date) / (1000 * 60 * 60);
+
+  if (diffHours < 1) {
+    const minutes = Math.max(1, Math.floor((now - date) / (1000 * 60)));
+    return `${minutes}m ago`;
+  }
+  if (diffHours < 24) return `${Math.floor(diffHours)}h ago`;
+  if (diffHours < 168) return `${Math.floor(diffHours / 24)}d ago`;
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+  });
+};
+
 const Announcements = () => {
+  const { user } = useAuth();
+  const [tab, setTab] = useState('all');
+  const [page, setPage] = useState(1);
   const [announcements, setAnnouncements] = useState([]);
   const [myAnnouncements, setMyAnnouncements] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('all');
   const [pagination, setPagination] = useState(null);
   const [myPagination, setMyPagination] = useState(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [liking, setLiking] = useState({});
-  const [deleting, setDeleting] = useState({});
-  const [editing, setEditing] = useState({});
-  const [editingId, setEditingId] = useState(null);
+  const [editId, setEditId] = useState(null);
   const [editMessage, setEditMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-  const [currentUser, setCurrentUser] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const noticeTimer = useRef(null);
+
+  const userId = user?._id || user?.id;
 
   useEffect(() => {
-    fetchCurrentUser();
-  }, []);
-
-  const fetchCurrentUser = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    try {
-      const response = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/users/profile`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setCurrentUser(response.data);
-    } catch (err) {
-      console.error('Failed to fetch user:', err);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'all') {
-      fetchAllAnnouncements();
-    } else {
-      fetchMyAnnouncements();
-    }
-  }, [activeTab, currentPage]);
-
-  const fetchAllAnnouncements = async () => {
-    try {
+    let active = true;
+    const load = async () => {
       setLoading(true);
-      const response = await announcementService.getAllAnnouncements(currentPage, 10);
-      setAnnouncements(response.announcements);
-      setPagination(response.pagination);
       setError('');
-    } catch (err) {
-      setError(err.message);
-      setAnnouncements([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchMyAnnouncements = async () => {
-    try {
-      setLoading(true);
-      const response = await announcementService.getMyAnnouncements(currentPage, 10);
-      setMyAnnouncements(response.announcements);
-      setMyPagination(response.pagination);
-      setError('');
-    } catch (err) {
-      setError(err.message);
-      setMyAnnouncements([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLike = async (announcementId) => {
-    if (liking[announcementId]) return;
-
-    try {
-      setLiking(prev => ({ ...prev, [announcementId]: true }));
-      const result = await announcementService.toggleLike(announcementId);
-      
-      // Update the announcements state
-      const updateAnnouncementList = (announcements) => 
-        announcements.map(announcement => 
-          announcement._id === announcementId
-            ? { ...announcement, likes: result.likes, liked: result.liked }
-            : announcement
-        );
-
-      if (activeTab === 'all') {
-        setAnnouncements(prev => updateAnnouncementList(prev));
-      } else {
-        setMyAnnouncements(prev => updateAnnouncementList(prev));
+      try {
+        if (tab === 'all') {
+          const data = await announcementService.getAllAnnouncements(page, PAGE_SIZE);
+          if (!active) return;
+          setAnnouncements(Array.isArray(data?.announcements) ? data.announcements : []);
+          setPagination(data?.pagination || null);
+        } else {
+          const data = await announcementService.getMyAnnouncements(page, PAGE_SIZE);
+          if (!active) return;
+          setMyAnnouncements(Array.isArray(data?.announcements) ? data.announcements : []);
+          setMyPagination(data?.pagination || null);
+        }
+      } catch (err) {
+        if (active) setError(err.message || 'Failed to load announcements');
+      } finally {
+        if (active) setLoading(false);
       }
-    } catch (err) {
-      console.error('Error toggling like:', err);
-    } finally {
-      setLiking(prev => ({ ...prev, [announcementId]: false }));
-    }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, [tab, page]);
+
+  useEffect(
+    () => () => {
+      if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    },
+    [],
+  );
+
+  const showNotice = (message) => {
+    setNotice(message);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(''), 4000);
   };
 
-  const handleDeleteAnnouncement = async (announcementId) => {
-    if (!window.confirm('Are you sure you want to delete this announcement? This action cannot be undone.')) {
-      return;
-    }
+  const current = tab === 'all' ? announcements : myAnnouncements;
+  const currentPagination = tab === 'all' ? pagination : myPagination;
 
+  const setCurrent = (updater) => {
+    if (tab === 'all') setAnnouncements(updater);
+    else setMyAnnouncements(updater);
+  };
+
+  const isOwner = (announcement) => {
+    const author = announcement.createdBy;
+    if (!userId || !author) return false;
+    return (author._id || author.id || author) === userId;
+  };
+
+  const handleLike = async (announcement) => {
+    if (liking[announcement._id]) return;
+    setLiking((currentLikes) => ({ ...currentLikes, [announcement._id]: true }));
     try {
-      setDeleting(prev => ({ ...prev, [announcementId]: true }));
-      await announcementService.deleteAnnouncement(announcementId);
-      
-      // Remove from local state
-      if (activeTab === 'all') {
-        setAnnouncements(prev => prev.filter(a => a._id !== announcementId));
-      } else {
-        setMyAnnouncements(prev => prev.filter(a => a._id !== announcementId));
-      }
-      
-      setSuccessMessage('Announcement deleted successfully!');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      const result = await announcementService.toggleLike(announcement._id);
+      setCurrent((list) =>
+        list.map((item) =>
+          item._id === announcement._id
+            ? { ...item, likes: result.likes, liked: result.liked }
+            : item,
+        ),
+      );
     } catch (err) {
-      setError(err.message || 'Failed to delete announcement');
-      setTimeout(() => setError(''), 5000);
+      setError(err.message || 'Failed to update like');
     } finally {
-      setDeleting(prev => ({ ...prev, [announcementId]: false }));
+      setLiking((currentLikes) => ({ ...currentLikes, [announcement._id]: false }));
     }
   };
 
-  const handleEditAnnouncement = async (announcementId, newMessage) => {
-    try {
-      setEditing(prev => ({ ...prev, [announcementId]: true }));
-      const updatedAnnouncement = await announcementService.updateAnnouncement(announcementId, {
-        message: newMessage
-      });
-      
-      // Update local state
-      const updateAnnouncementList = (announcements) => 
-        announcements.map(announcement => 
-          announcement._id === announcementId
-            ? { ...announcement, message: updatedAnnouncement.message }
-            : announcement
-        );
-
-      if (activeTab === 'all') {
-        setAnnouncements(prev => updateAnnouncementList(prev));
-      } else {
-        setMyAnnouncements(prev => updateAnnouncementList(prev));
-      }
-      
-      setEditingId(null);
-      setEditMessage('');
-      setSuccessMessage('Announcement updated successfully!');
-      setTimeout(() => setSuccessMessage(''), 3000);
-    } catch (err) {
-      setError(err.message || 'Failed to update announcement');
-      setTimeout(() => setError(''), 5000);
-    } finally {
-      setEditing(prev => ({ ...prev, [announcementId]: false }));
-    }
-  };
-
-  const startEdit = (announcementId, currentMessage) => {
-    setEditingId(announcementId);
-    setEditMessage(currentMessage);
+  const startEdit = (announcement) => {
+    setEditId(announcement._id);
+    setEditMessage(announcement.message);
   };
 
   const cancelEdit = () => {
-    setEditingId(null);
+    setEditId(null);
     setEditMessage('');
   };
 
-  const saveEdit = (announcementId) => {
-    if (editMessage.trim()) {
-      handleEditAnnouncement(announcementId, editMessage.trim());
-    }
-  };
-
-  const isOwnAnnouncement = (announcement) => {
-    if (!currentUser || !announcement.createdBy) return false;
-    return currentUser.id === announcement.createdBy._id || 
-           currentUser._id === announcement.createdBy._id ||
-           currentUser.id === announcement.createdBy ||
-           currentUser._id === announcement.createdBy;
-  };
-
-  const handlePageChange = (newPage) => {
-    setCurrentPage(newPage);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = (now - date) / (1000 * 60 * 60);
-    
-    if (diffInHours < 1) {
-      const minutes = Math.floor((now - date) / (1000 * 60));
-      return `${minutes}m ago`;
-    } else if (diffInHours < 24) {
-      return `${Math.floor(diffInHours)}h ago`;
-    } else if (diffInHours < 168) { // 7 days
-      const days = Math.floor(diffInHours / 24);
-      return `${days}d ago`;
-    } else {
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+  const saveEdit = async (announcementId) => {
+    if (!editMessage.trim()) return;
+    setSaving(true);
+    setError('');
+    try {
+      const updated = await announcementService.updateAnnouncement(announcementId, {
+        message: editMessage.trim(),
       });
+      setCurrent((list) =>
+        list.map((item) =>
+          item._id === announcementId ? { ...item, message: updated.message } : item,
+        ),
+      );
+      cancelEdit();
+      showNotice('Announcement updated.');
+    } catch (err) {
+      setError(err.message || 'Failed to update announcement');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const currentAnnouncements = activeTab === 'all' ? announcements : myAnnouncements;
-  const currentPagination = activeTab === 'all' ? pagination : myPagination;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setError('');
+    try {
+      await announcementService.deleteAnnouncement(deleteTarget._id);
+      setCurrent((list) => list.filter((item) => item._id !== deleteTarget._id));
+      setDeleteTarget(null);
+      showNotice('Announcement deleted.');
+    } catch (err) {
+      setError(err.message || 'Failed to delete announcement');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center">
-        <div className="text-gray-700 text-xl flex items-center">
-          <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mr-3"></div>
-          Loading announcements...
-        </div>
-      </div>
-    );
-  }
+  const changeTab = (nextTab) => {
+    setTab(nextTab);
+    setPage(1);
+    cancelEdit();
+  };
+
+  const tabs = [
+    { value: 'all', label: 'All announcements' },
+    { value: 'my', label: 'Mine' },
+  ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
-      {/* Compact Navigation Bar */}
-      <nav className="bg-purple-600 border-b border-purple-700 sticky top-0 z-50 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-14">
-            <div className="flex items-center space-x-4">
-              <Link 
-                to="/dashboard" 
-                className="text-white/80 hover:text-white transition-colors text-sm flex items-center space-x-1"
-              >
-                <ArrowLeftIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Back to Dashboard</span>
-              </Link>
-              <div className="h-6 w-px bg-white/20 hidden sm:block"></div>
-              <div className="flex items-center space-x-2">
-                <div className="bg-white/20 rounded-lg p-1.5">
-                  <SpeakerWaveIcon className="w-5 h-5 text-white" />
+    <>
+      <PageHeader
+        eyebrow="Community"
+        title="Announcements"
+        description="Updates, news and notices from the clubs you follow."
+        actions={<ButtonLink to="/create-announcement" icon={PlusIcon}>New announcement</ButtonLink>}
+      />
+
+      <div className="mt-6">
+        <SegmentedControl options={tabs} value={tab} onChange={changeTab} label="Announcement view" />
+      </div>
+
+      {notice ? (
+        <Alert variant="success" className="mt-4">
+          {notice}
+        </Alert>
+      ) : null}
+      {error ? (
+        <Alert variant="error" className="mt-4" title="Something went wrong">
+          {error}
+        </Alert>
+      ) : null}
+
+      <div className="mt-5 space-y-4">
+        {loading ? (
+          Array.from({ length: 3 }).map((_, index) => (
+            <Card key={index} className="p-5">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3 w-40" />
+                  <Skeleton className="h-3 w-24" />
                 </div>
-                <h1 className="text-white text-base font-bold hidden sm:block">Club Announcements</h1>
               </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link
-                to="/create-announcement"
-                className="bg-purple-700 hover:bg-purple-800 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg flex items-center space-x-1 sm:space-x-2 transform transition-all duration-300 hover:scale-105 shadow-lg text-sm"
-              >
-                <PlusIcon className="w-4 h-4" />
-                <span className="font-semibold">New</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-        
-        {/* Tabs Section */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-3">
-          <div className="flex space-x-2 bg-purple-700 rounded-xl p-1 border border-purple-800">
-            <button
-              onClick={() => {
-                setActiveTab('all');
-                setCurrentPage(1);
-              }}
-              className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center ${
-                activeTab === 'all'
-                  ? 'bg-purple-800 text-white shadow-lg'
-                  : 'text-purple-100 hover:text-white hover:bg-purple-600'
-              }`}
-            >
-              <SpeakerWaveIcon className="w-4 h-4 mr-2" />
-              All Announcements
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('my');
-                setCurrentPage(1);
-              }}
-              className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center ${
-                activeTab === 'my'
-                  ? 'bg-purple-800 text-white shadow-lg'
-                  : 'text-purple-100 hover:text-white hover:bg-purple-600'
-              }`}
-            >
-              <UserGroupIcon className="w-4 h-4 mr-2" />
-              My Announcements
-            </button>
-          </div>
-        </div>
-      </nav>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        {/* Success Message */}
-        {successMessage && (
-          <div className="bg-green-100 border border-green-400 rounded-lg p-3 mb-4">
-            <p className="text-green-700 text-sm">{successMessage}</p>
-          </div>
-        )}
-
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-100 border border-red-400 rounded-lg p-3 mb-4">
-            <p className="text-red-700 text-sm">{error}</p>
-          </div>
-        )}
-
-        {/* Announcements */}
-        {currentAnnouncements.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-xl border border-gray-200 shadow-lg">
-            <SpeakerWaveIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">
-              {activeTab === 'all' ? '📢 No announcements yet' : '📝 No announcements created'}
-            </h3>
-            <p className="text-gray-600 mb-4 text-sm max-w-md mx-auto">
-              {activeTab === 'all' 
-                ? 'Check back later for updates from university clubs!'
-                : 'Start sharing updates with your club members by creating your first announcement.'
-              }
-            </p>
-            {activeTab === 'my' && (
-              <Link
-                to="/create-announcement"
-                className="inline-flex items-center px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transform transition-all duration-300 hover:scale-105 text-sm"
-              >
-                <PlusIcon className="w-4 h-4 mr-2" />
-                Create Your First Announcement
-              </Link>
-            )}
-          </div>
+              <Skeleton className="mt-4 h-3 w-full" />
+              <Skeleton className="mt-2 h-3 w-5/6" />
+            </Card>
+          ))
+        ) : current.length === 0 ? (
+          <EmptyState
+            icon={SpeakerWaveIcon}
+            title={tab === 'all' ? 'No announcements yet' : 'You have not posted an announcement'}
+            description={
+              tab === 'all'
+                ? 'Check back later for updates from campus clubs.'
+                : 'Share news, reminders and updates with your club members.'
+            }
+            action={
+              tab === 'my' ? (
+                <ButtonLink to="/create-announcement" icon={PlusIcon}>
+                  Create announcement
+                </ButtonLink>
+              ) : null
+            }
+          />
         ) : (
-          <div className="space-y-4">
-            {currentAnnouncements.map((announcement) => (
-              <div
-                key={announcement._id}
-                className="bg-white rounded-xl p-4 sm:p-5 border border-gray-200 shadow-lg transform transition-all duration-300 hover:scale-[1.01] hover:shadow-xl"
-              >
-                {/* Header */}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center space-x-2 sm:space-x-3">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                      <span className="text-white font-bold text-xs sm:text-sm">
-                        {announcement.createdBy?.firstName?.charAt(0) || '?'}
-                      </span>
+          current.map((announcement) => {
+            const author = announcement.createdBy;
+            const authorName =
+              `${author?.firstName || ''} ${author?.lastName || ''}`.trim() ||
+              author?.email ||
+              'Club member';
+            const owner = isOwner(announcement);
+
+            return (
+              <Card key={announcement._id} className="p-5">
+                <div className="flex items-start gap-3">
+                  <Avatar name={authorName} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <p className="text-sm font-semibold text-ink-900 dark:text-white">
+                        {authorName}
+                      </p>
+                      {announcement.club?.name ? (
+                        <>
+                          <span className="text-ink-300 dark:text-ink-600">·</span>
+                          <p className="text-sm font-medium text-brand-600 dark:text-brand-400">
+                            {announcement.club.name}
+                          </p>
+                        </>
+                      ) : null}
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center space-x-2 flex-wrap">
-                        <h4 className="text-gray-800 font-semibold text-sm sm:text-base truncate">
-                          {announcement.createdBy?.firstName} {announcement.createdBy?.lastName}
-                        </h4>
-                        <span className="text-gray-400 text-xs sm:text-sm">•</span>
-                        <span className="text-purple-600 text-xs sm:text-sm font-medium">
-                          {announcement.club?.name}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-1 sm:space-x-2 text-gray-500 text-xs sm:text-sm">
-                        <ClockIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                        <span>{formatDate(announcement.createdAt)}</span>
-                      </div>
-                    </div>
+                    <p className="mt-0.5 flex items-center gap-1 text-xs text-ink-500 dark:text-ink-400">
+                      <ClockIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                      {relativeTime(announcement.createdAt)}
+                      {announcement.club?.category ? ` · ${announcement.club.category}` : ''}
+                    </p>
                   </div>
-                  <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
-                    {(activeTab === 'my' || isOwnAnnouncement(announcement)) && (
-                      <div className="flex space-x-1">
+
+                  <div className="flex shrink-0 items-center gap-1">
+                    {owner ? (
+                      <>
                         <button
-                          onClick={() => startEdit(announcement._id, announcement.message)}
-                          disabled={editing[announcement._id] || deleting[announcement._id]}
-                          className="text-blue-600 hover:text-blue-700 transition-colors p-1.5 sm:p-2 rounded-lg hover:bg-blue-100 disabled:opacity-50"
-                          title="Edit announcement"
+                          type="button"
+                          onClick={() => startEdit(announcement)}
+                          aria-label="Edit announcement"
+                          className="rounded-lg p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800 dark:hover:text-white"
                         >
-                          <PencilIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <PencilIcon className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => handleDeleteAnnouncement(announcement._id)}
-                          disabled={deleting[announcement._id] || editing[announcement._id]}
-                          className="text-red-600 hover:text-red-700 transition-colors p-1.5 sm:p-2 rounded-lg hover:bg-red-100 disabled:opacity-50"
-                          title="Delete announcement"
+                          type="button"
+                          onClick={() => setDeleteTarget(announcement)}
+                          aria-label="Delete announcement"
+                          className="rounded-lg p-2 text-ink-400 transition-colors hover:bg-danger-50 hover:text-danger-600 dark:hover:bg-danger-600/10 dark:hover:text-rose-400"
                         >
-                          {deleting[announcement._id] ? (
-                            <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-                          ) : (
-                            <TrashIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-                          )}
+                          <TrashIcon className="h-4 w-4" />
                         </button>
-                      </div>
-                    )}
-                    {activeTab === 'all' && !isOwnAnnouncement(announcement) && (
+                      </>
+                    ) : (
                       <ReportButton
                         reportType="announcement"
                         reportTargetId={announcement._id}
-                        reportTargetInfo={{ 
-                          title: announcement.message ? 
-                            (announcement.message.length > 50 ? 
-                              `"${announcement.message.substring(0, 50)}..."` : 
-                              `"${announcement.message}"`) :
-                            `Announcement by ${announcement.createdBy?.name || 
-                              announcement.createdBy?.email || 
-                              `${announcement.createdBy?.firstName || ''} ${announcement.createdBy?.lastName || ''}`.trim() ||
-                              'Unknown User'}`,
+                        reportTargetInfo={{
+                          title:
+                            announcement.message?.length > 50
+                              ? `"${announcement.message.slice(0, 50)}..."`
+                              : `"${announcement.message || 'Announcement'}"`,
                           description: announcement.message,
                           club: announcement.club?.name,
-                          author: announcement.createdBy?.name || announcement.createdBy?.email || 'Unknown'
+                          author: authorName,
                         }}
                         variant="icon"
                         size="small"
@@ -428,146 +332,138 @@ const Announcements = () => {
                   </div>
                 </div>
 
-                {/* Content */}
-                <div className="mb-3">
-                  {editingId === announcement._id ? (
+                <div className="mt-4">
+                  {editId === announcement._id ? (
                     <div className="space-y-2">
-                      <textarea
+                      <Textarea
                         value={editMessage}
-                        onChange={(e) => setEditMessage(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-transparent transition-all resize-none text-sm"
+                        onChange={(event) => setEditMessage(event.target.value)}
                         rows={4}
-                        placeholder="Edit your announcement..."
+                        aria-label="Edit announcement message"
                       />
-                      <div className="flex space-x-2">
-                        <button
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          loading={saving}
+                          disabled={!editMessage.trim()}
                           onClick={() => saveEdit(announcement._id)}
-                          disabled={editing[announcement._id] || !editMessage.trim()}
-                          className="px-3 py-1.5 bg-green-100 border border-green-400 text-green-700 rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50 text-xs font-medium"
                         >
-                          {editing[announcement._id] ? (
-                            <>
-                              <div className="w-3 h-3 border-2 border-green-700 border-t-transparent rounded-full animate-spin inline mr-1"></div>
-                              Saving...
-                            </>
-                          ) : (
-                            'Save'
-                          )}
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          disabled={editing[announcement._id]}
-                          className="px-3 py-1.5 bg-gray-100 border border-gray-400 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 text-xs font-medium"
-                        >
+                          Save changes
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={cancelEdit} disabled={saving}>
                           Cancel
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   ) : (
-                    <p className="text-gray-700 text-sm sm:text-base leading-relaxed whitespace-pre-wrap">
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-700 dark:text-ink-200">
                       {announcement.message}
                     </p>
                   )}
                 </div>
 
-                {/* Image */}
-                {announcement.image && (
-                  <div className="mb-3 rounded-lg overflow-hidden border border-gray-200">
+                {announcement.image ? (
+                  <div className="mt-4 overflow-hidden rounded-[10px] border border-ink-200 dark:border-ink-800">
                     <img
-                      src={`http://localhost:8000${announcement.image}`}
-                      alt="Announcement"
-                      className="w-full h-auto max-h-80 object-cover"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
+                      src={resolveAssetUrl(announcement.image)}
+                      alt=""
+                      className="max-h-96 w-full object-cover"
+                      onError={(event) => {
+                        event.currentTarget.style.display = 'none';
                       }}
                     />
                   </div>
-                )}
+                ) : null}
 
-                {/* Actions */}
-                <div className="flex items-center justify-between pt-3 border-t border-gray-200">
-                  <div className="flex items-center space-x-3 sm:space-x-4">
-                    <button
-                      onClick={() => handleLike(announcement._id)}
-                      disabled={liking[announcement._id]}
-                      className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg transition-all transform hover:scale-105 text-xs sm:text-sm ${
-                        announcement.liked
-                          ? 'bg-red-100 border border-red-400 text-red-700'
-                          : 'bg-gray-100 border border-gray-300 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {announcement.liked ? (
-                        <HeartSolidIcon className="w-4 h-4" />
-                      ) : (
-                        <HeartIcon className="w-4 h-4" />
-                      )}
-                      <span className="font-medium">{announcement.likes}</span>
-                    </button>
-                    <div className="flex items-center space-x-1.5 text-gray-600 text-xs sm:text-sm">
-                      <ChatBubbleLeftIcon className="w-4 h-4" />
-                      <span>Comments</span>
-                    </div>
-                  </div>
-                  <div className="text-gray-600 text-xs sm:text-sm">
-                    {announcement.club?.category && (
-                      <span className="bg-purple-100 border border-purple-300 px-2 py-0.5 sm:py-1 rounded text-purple-700">
-                        {announcement.club.category}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Pagination */}
-        {currentPagination && currentPagination.totalPages > 1 && (
-          <div className="mt-6 flex justify-center">
-            <div className="bg-white rounded-xl p-1.5 border border-gray-200 shadow-lg">
-              <div className="flex items-center space-x-1">
-                <button
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={!currentPagination.hasPrev}
-                  className="px-2.5 py-1.5 rounded-lg text-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed hover:bg-gray-100 transition-colors text-xs sm:text-sm"
-                >
-                  Previous
-                </button>
-                {Array.from({ length: currentPagination.totalPages }, (_, i) => i + 1).map(page => (
+                <div className="mt-4 flex items-center gap-4 border-t border-ink-100 pt-3 dark:border-ink-800">
                   <button
-                    key={page}
-                    onClick={() => handlePageChange(page)}
-                    className={`px-2.5 py-1.5 rounded-lg transition-colors text-xs sm:text-sm ${
-                      page === currentPage
-                        ? 'bg-purple-600 text-white'
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                    type="button"
+                    onClick={() => handleLike(announcement)}
+                    disabled={liking[announcement._id]}
+                    aria-label={announcement.liked ? 'Unlike' : 'Like'}
+                    aria-pressed={Boolean(announcement.liked)}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                      announcement.liked
+                        ? 'bg-danger-50 text-danger-600 dark:bg-danger-600/15 dark:text-rose-300'
+                        : 'text-ink-500 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800'
                     }`}
                   >
-                    {page}
+                    {announcement.liked ? (
+                      <HeartSolidIcon className="h-4 w-4" />
+                    ) : (
+                      <HeartIcon className="h-4 w-4" />
+                    )}
+                    {announcement.likes || 0}
                   </button>
-                ))}
-                <button
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={!currentPagination.hasNext}
-                  className="px-2.5 py-1.5 rounded-lg text-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed hover:bg-gray-100 transition-colors text-xs sm:text-sm"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          </div>
+                  <span className="inline-flex items-center gap-1.5 text-xs text-ink-400 dark:text-ink-500">
+                    <ChatBubbleLeftIcon className="h-4 w-4" aria-hidden="true" />
+                    Announcement
+                  </span>
+                </div>
+              </Card>
+            );
+          })
         )}
       </div>
 
-      {/* Floating Action Button */}
-      <Link
-        to="/create-announcement"
-        className="fixed bottom-6 right-6 bg-purple-600 hover:bg-purple-700 text-white p-3 rounded-full shadow-2xl transform transition-all duration-300 hover:scale-110 z-50"
-        title="Create New Announcement"
-      >
-        <PlusIcon className="w-5 h-5" />
-      </Link>
-    </div>
+      {currentPagination && currentPagination.totalPages > 1 ? (
+        <div className="mt-6 flex items-center justify-between">
+          <p className="text-sm text-ink-500 dark:text-ink-400">
+            Page {page} of {currentPagination.totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!currentPagination.hasPrev}
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!currentPagination.hasNext}
+              onClick={() => setPage((value) => value + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteTarget ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-announcement-title"
+        >
+          <div className="w-full max-w-md rounded-card border border-ink-200 bg-white p-6 shadow-pop dark:border-ink-800 dark:bg-ink-900">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-danger-50 text-danger-600 dark:bg-danger-600/15 dark:text-rose-400">
+              <TrashIcon className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <h2
+              id="delete-announcement-title"
+              className="mt-4 text-lg font-semibold text-ink-900 dark:text-white"
+            >
+              Delete this announcement?
+            </h2>
+            <p className="mt-1.5 text-sm text-ink-500 dark:text-ink-400">
+              It will be removed from the feed for everyone. This cannot be undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button variant="danger" loading={deleting} onClick={handleDelete}>
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 };
 

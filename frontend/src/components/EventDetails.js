@@ -1,455 +1,368 @@
-﻿import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { eventService } from '../services/eventService';
-import { authService } from '../services/authService';
-import { getUser } from '../utils/localStorage';
-import { 
-  CalendarIcon, 
-  MapPinIcon, 
-  UserGroupIcon, 
-  ClockIcon,
-  CurrencyDollarIcon,
+import React, { useCallback, useEffect, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  ArrowLeftIcon,
   BanknotesIcon,
+  CalendarDaysIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  MapPinIcon,
+  UserGroupIcon,
   UserPlusIcon,
-  CheckCircleIcon
 } from '@heroicons/react/24/outline';
+import { useAuth } from '../contexts/AuthContext';
+import { eventService } from '../services/eventService';
+import {
+  Alert,
+  Badge,
+  Button,
+  ButtonLink,
+  Card,
+  CardBody,
+  CardHeader,
+  EmptyState,
+  PageHeader,
+  Skeleton,
+} from '../ui';
 import ReportButton from './ReportButton';
 import FeedbackButton from './feedback/FeedbackButton';
+
+const idOf = (value) => (value && typeof value === 'object' ? value._id || value.id : value);
+
+const formatDate = (value) =>
+  new Date(value).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+const formatTime = (value) =>
+  new Date(value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+const formatCurrency = (amount, currency = 'BDT') => {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: (currency || 'BDT').toUpperCase(),
+      maximumFractionDigits: 2,
+    }).format(Number(amount) || 0);
+  } catch (error) {
+    return `${amount} ${currency}`;
+  }
+};
 
 const EventDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [enrolling, setEnrolling] = useState(false);
   const [error, setError] = useState('');
-  const [isEnrolled, setIsEnrolled] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
+  const [notice, setNotice] = useState('');
+  const [enrolling, setEnrolling] = useState(false);
+
+  const userId = user?._id || user?.id;
+
+  const loadEvent = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!silent) setLoading(true);
+      setError('');
+      try {
+        const data = await eventService.getEventById(id);
+        setEvent(data);
+      } catch (err) {
+        setError(err.message || 'Failed to load this event');
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [id],
+  );
 
   useEffect(() => {
-    if (id) {
-      // Fetch user and event in sequence to ensure currentUser is available
-      const loadData = async () => {
-        await fetchCurrentUser();
-        await fetchEventDetails();
-      };
-      loadData();
-    }
-    
-    // Refresh event details when page becomes visible (e.g., after returning from payment)
-    const handleVisibilityChange = async () => {
-      if (!document.hidden && id) {
-        console.log('Page became visible, refreshing event details');
-        await fetchCurrentUser();
-        await fetchEventDetails();
-      }
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [id]);
+    loadEvent();
+  }, [loadEvent]);
 
-  const fetchCurrentUser = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.log('No token found, user not logged in');
-        setCurrentUser(null);
-        return;
-      }
-
-      const response = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/users/profile`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      console.log('Fetched current user from API:', response.data);
-      setCurrentUser(response.data);
-    } catch (err) {
-      console.error('Error fetching current user:', err);
-      setCurrentUser(null);
-    }
-  };
-
-  const fetchEventDetails = async () => {
-    try {
-      setLoading(true);
-      const response = await eventService.getEventById(id);
-      setEvent(response);
-      
-      // Wait a bit to ensure currentUser state is updated
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      console.log('=== EVENT DETAILS DEBUG ===');
-      console.log('Full event response:', response);
-      console.log('Event attendees:', response.attendees);
-      console.log('Current user from state:', currentUser);
-      
-      // Re-check current user from state after waiting
-      setIsEnrolled(false); // Reset first
-      
-    } catch (err) {
-      setError('Failed to fetch event details');
-      console.error('Error fetching event:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Separate effect to check enrollment when currentUser or event changes
   useEffect(() => {
-    if (!currentUser) {
-      console.log('❌ No currentUser - cannot check enrollment');
-      setIsEnrolled(false);
-      return;
-    }
+    const onVisible = () => {
+      if (!document.hidden) loadEvent({ silent: true });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [loadEvent]);
 
-    if (!event) {
-      console.log('❌ No event - cannot check enrollment');
-      setIsEnrolled(false);
-      return;
-    }
-
-    if (!event.attendees || !Array.isArray(event.attendees)) {
-      console.log('❌ No attendees array - setting isEnrolled to false');
-      setIsEnrolled(false);
-      return;
-    }
-
-    console.log('\n=== 🔍 CHECKING ENROLLMENT ===');
-    console.log('Current user ID:', currentUser.id);
-    console.log('Current user _id:', currentUser._id);
-    console.log('Event name:', event.name);
-    console.log('Number of attendees:', event.attendees.length);
-    console.log('Attendees array:', JSON.stringify(event.attendees, null, 2));
-    
-    const userId = currentUser._id || currentUser.id;
-    console.log('Using user ID for comparison:', userId);
-    
-    if (!userId) {
-      console.log('❌ Could not extract user ID');
-      setIsEnrolled(false);
-      return;
-    }
-
-    const isUserEnrolled = event.attendees.some(attendee => {
-      // Handle both populated (object) and unpopulated (ObjectId string) attendees
-      const attendeeId = typeof attendee === 'string' 
-        ? attendee 
-        : (attendee._id || attendee.id);
-      
-      const match = String(attendeeId) === String(userId);
-      
-      console.log('Comparing attendee:', {
-        attendeeType: typeof attendee,
-        attendeeId,
-        userId,
-        match
-      });
-      
-      return match;
-    });
-    
-    console.log('\n✅ Final enrollment result:', isUserEnrolled);
-    console.log('=== END ENROLLMENT CHECK ===\n');
-    
-    setIsEnrolled(isUserEnrolled);
-  }, [currentUser, event]);
+  const attendees = event?.attendees || [];
+  const isEnrolled = Boolean(userId) && attendees.some((attendee) => String(idOf(attendee)) === String(userId));
+  const isCompleted = event ? new Date(event.date) < new Date() : false;
+  const isFull = Boolean(event?.maxAttendees) && attendees.length >= event.maxAttendees;
+  const club = typeof event?.clubId === 'object' ? event.clubId : null;
 
   const handleEnrollment = async () => {
-    console.log('handleEnrollment called', { event, currentUser, isEnrolled });
-    
-    // Check if user is logged in
-    if (!currentUser) {
-      navigate('/login');
-      return;
-    }
-    
-    // Double-check enrollment directly from event data (don't rely on state)
-    const userId = currentUser._id || currentUser.id;
-    const isActuallyEnrolled = event.attendees?.some(attendee => {
-      const attendeeId = typeof attendee === 'string' ? attendee : (attendee._id || attendee.id);
-      return String(attendeeId) === String(userId);
-    });
-    
-    if (isEnrolled || isActuallyEnrolled) {
-      console.log('User is already enrolled (state or direct check), blocking action');
-      setError('You are already registered for this event');
-      return;
-    }
-    
-    // If it's a paid event, redirect to payment page
+    if (!event) return;
+
     if (event.isPaid) {
-      console.log('Navigating to payment page for event:', event._id);
       navigate(`/payment/${event._id}`);
       return;
     }
 
-    // For free events, try to register directly
+    setEnrolling(true);
+    setError('');
     try {
-      setEnrolling(true);
-      setError('');
-      const response = await eventService.joinEvent(event._id);
-      console.log('Registration successful:', response);
-      setIsEnrolled(true);
-      // Refresh event details to update attendee count
-      await fetchEventDetails();
+      await eventService.joinEvent(event._id);
+      setNotice('You are registered. See you there!');
+      await loadEvent({ silent: true });
     } catch (err) {
-      // Only redirect to login for authentication errors (invalid token)
-      // Don't redirect for authorization errors (already registered, past event, etc.)
-      if (err.response?.status === 401 && 
-          (err.response?.data?.message?.includes('Unauthorized') || 
-           err.response?.data?.message?.includes('token'))) {
-        navigate('/login');
-        return;
-      }
-      
-      setError(err.response?.data?.message || err.message || 'Failed to register for event');
-      console.error('Error registering for event:', err);
+      setError(err.message || 'Failed to register for this event');
     } finally {
       setEnrolling(false);
     }
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
-  const formatTime = (dateString) => {
-    return new Date(dateString).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const formatCurrency = (amount, currency = 'USD') => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency.toUpperCase()
-    }).format(amount);
-  };
-
-  // Debug render state
-  console.log('🎨 RENDER STATE:', {
-    hasCurrentUser: !!currentUser,
-    currentUserId: currentUser?._id || currentUser?.id,
-    hasEvent: !!event,
-    eventName: event?.name,
-    attendeesCount: event?.attendees?.length,
-    isEnrolled,
-    loading
-  });
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 text-gray-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-      </div>
-    );
-  }
-
-  if (!event) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 text-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-2">Event Not Found</h2>
-          <p className="text-gray-600">The event you're looking for doesn't exist.</p>
+      <div className="space-y-6" aria-busy="true">
+        <Skeleton className="h-4 w-24" />
+        <Card className="p-6">
+          <Skeleton className="h-8 w-2/3" />
+          <Skeleton className="mt-3 h-4 w-1/2" />
+          <Skeleton className="mt-6 h-24 w-full" />
+        </Card>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-48 w-full" />
         </div>
       </div>
     );
   }
 
+  if (error && !event) {
+    return (
+      <EmptyState
+        icon={CalendarDaysIcon}
+        title="Event not found"
+        description={error}
+        action={<ButtonLink to="/browse-events" icon={ArrowLeftIcon}>Back to events</ButtonLink>}
+      />
+    );
+  }
+
+  if (!event) return null;
+
+  const capacity = event.maxAttendees > 0 ? event.maxAttendees : null;
+  const percentage = capacity ? Math.min(100, Math.round((attendees.length / capacity) * 100)) : 0;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 text-gray-900">
-      <div className="max-w-4xl mx-auto p-8">
-        {/* Event Header */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden mb-8">
-          <div className="p-8">
-            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between mb-6">
-              <div className="flex-1">
-                <div className="flex items-start justify-between mb-4">
-                  <h1 className="text-4xl font-bold flex-1">{event.name}</h1>
-                  {currentUser && (
-                    <ReportButton
-                      reportType="event"
-                      reportTargetId={event._id}
-                      reportTargetInfo={{ 
-                        title: event.name,
-                        description: event.description,
-                        club: event.club?.name 
-                      }}
-                      variant="icon"
-                      size="medium"
-                      tooltip="Report this event"
-                    />
-                  )}
-                </div>
-                <p className="text-gray-700 text-lg mb-4">{event.description}</p>
-                
-                <div className="flex items-center space-x-4 text-sm text-gray-700 mb-4">
-                  <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full">
-                    {event.club?.name}
-                  </span>
-                  <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full">
-                    {event.category}
-                  </span>
-                </div>
-              </div>
+    <>
+      <Link
+        to="/browse-events"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-500 transition-colors hover:text-ink-900 dark:text-ink-400 dark:hover:text-white"
+      >
+        <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
+        Back to events
+      </Link>
 
-              {/* Price Display */}
-              {event.isPaid && (
-                <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg p-4 text-center lg:ml-6">
-                  <div className="flex items-center justify-center space-x-2 mb-2">
-                    <CurrencyDollarIcon className="w-6 h-6" />
-                    <span className="text-sm font-medium">Event Fee</span>
-                  </div>
-                  <div className="text-2xl font-bold">
-                    {formatCurrency(event.price, event.currency)}
-                  </div>
-                </div>
-              )}
+      <PageHeader
+        className="mt-4"
+        eyebrow={club?.name || 'Campus event'}
+        title={event.name}
+        description={event.description}
+        actions={
+          <ReportButton
+            reportType="event"
+            reportTargetId={event._id}
+            reportTargetInfo={{
+              title: event.name,
+              description: event.description,
+              club: club?.name,
+            }}
+            variant="icon"
+            tooltip="Report this event"
+          />
+        }
+      />
 
-              {!event.isPaid && (
-                <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg p-4 text-center lg:ml-6">
-                  <div className="flex items-center justify-center space-x-2 mb-2">
-                    <CheckCircleIcon className="w-6 h-6" />
-                    <span className="text-sm font-medium">Free Event</span>
-                  </div>
-                  <div className="text-xl font-bold">
-                    No Cost
-                  </div>
-                </div>
+      {notice ? (
+        <Alert variant="success" className="mt-4">
+          {notice}
+        </Alert>
+      ) : null}
+      {error ? (
+        <Alert variant="error" className="mt-4">
+          {error}
+        </Alert>
+      ) : null}
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Card className="p-5">
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge variant={isCompleted ? 'neutral' : 'success'}>
+                {isCompleted ? 'Completed' : 'Upcoming'}
+              </Badge>
+              {event.isPaid ? (
+                <Badge variant="info">{formatCurrency(event.price, event.currency)}</Badge>
+              ) : (
+                <Badge variant="brand">Free event</Badge>
               )}
+              {isFull && !isCompleted ? <Badge variant="warning">Full</Badge> : null}
+              {isEnrolled ? <Badge variant="success" dot>Registered</Badge> : null}
             </div>
 
-            {/* Event Details Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="flex items-center space-x-3">
-                <CalendarIcon className="w-6 h-6 text-purple-600" />
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <div className="flex items-start gap-3 rounded-[10px] border border-ink-200 p-3 dark:border-ink-800">
+                <CalendarDaysIcon className="mt-0.5 h-5 w-5 text-brand-600 dark:text-brand-400" aria-hidden="true" />
                 <div>
-                  <p className="text-sm text-gray-600">Date</p>
-                  <p className="font-semibold text-gray-900">{formatDate(event.date)}</p>
+                  <p className="text-xs text-ink-500 dark:text-ink-400">Date</p>
+                  <p className="text-sm font-medium text-ink-900 dark:text-white">{formatDate(event.date)}</p>
                 </div>
               </div>
-
-              <div className="flex items-center space-x-3">
-                <ClockIcon className="w-6 h-6 text-purple-600" />
+              <div className="flex items-start gap-3 rounded-[10px] border border-ink-200 p-3 dark:border-ink-800">
+                <ClockIcon className="mt-0.5 h-5 w-5 text-brand-600 dark:text-brand-400" aria-hidden="true" />
                 <div>
-                  <p className="text-sm text-gray-600">Time</p>
-                  <p className="font-semibold text-gray-900">{formatTime(event.date)}</p>
+                  <p className="text-xs text-ink-500 dark:text-ink-400">Time</p>
+                  <p className="text-sm font-medium text-ink-900 dark:text-white">{formatTime(event.date)}</p>
                 </div>
               </div>
-
-              <div className="flex items-center space-x-3">
-                <MapPinIcon className="w-6 h-6 text-purple-600" />
+              <div className="flex items-start gap-3 rounded-[10px] border border-ink-200 p-3 dark:border-ink-800">
+                <MapPinIcon className="mt-0.5 h-5 w-5 text-brand-600 dark:text-brand-400" aria-hidden="true" />
                 <div>
-                  <p className="text-sm text-gray-600">Location</p>
-                  <p className="font-semibold text-gray-900">{event.location}</p>
+                  <p className="text-xs text-ink-500 dark:text-ink-400">Location</p>
+                  <p className="text-sm font-medium text-ink-900 dark:text-white">{event.location || 'TBA'}</p>
                 </div>
               </div>
-
-              <div className="flex items-center space-x-3">
-                <UserGroupIcon className="w-6 h-6 text-purple-600" />
+              <div className="flex items-start gap-3 rounded-[10px] border border-ink-200 p-3 dark:border-ink-800">
+                <UserGroupIcon className="mt-0.5 h-5 w-5 text-brand-600 dark:text-brand-400" aria-hidden="true" />
                 <div>
-                  <p className="text-sm text-gray-600">Attendees</p>
-                  <p className="font-semibold text-gray-900">
-                    {event.attendees?.length || 0} / {event.maxAttendees || '∞'}
+                  <p className="text-xs text-ink-500 dark:text-ink-400">Attending</p>
+                  <p className="text-sm font-medium text-ink-900 dark:text-white">
+                    {attendees.length}
+                    {capacity ? ` / ${capacity}` : ''}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Registration Status */}
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded mb-6">
-                {error}
-              </div>
-            )}
-
-            {/* Action Button */}
-            <div className="flex justify-center space-x-4">
-              {isEnrolled ? (
-                <div className="flex items-center space-x-2 bg-green-50 text-green-800 px-8 py-3 rounded-lg font-semibold border-2 border-green-200">
-                  <CheckCircleIcon className="w-5 h-5" />
-                  <span>Already Registered ✓</span>
+            {capacity ? (
+              <div className="mt-5">
+                <div className="h-2 overflow-hidden rounded-full bg-ink-100 dark:bg-ink-800">
+                  <div
+                    className={`h-full rounded-full ${isFull ? 'bg-danger-500' : 'bg-brand-500'}`}
+                    style={{ width: `${percentage}%` }}
+                  />
                 </div>
+                <p className="mt-1.5 text-xs text-ink-500 dark:text-ink-400">
+                  {isFull
+                    ? 'This event is full.'
+                    : `${capacity - attendees.length} of ${capacity} spots remaining.`}
+                </p>
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex flex-wrap items-center gap-2">
+              {isEnrolled ? (
+                <span className="inline-flex h-10 items-center gap-2 rounded-[10px] bg-success-50 px-4 text-sm font-medium text-success-700 dark:bg-success-600/15 dark:text-emerald-300">
+                  <CheckCircleIcon className="h-4 w-4" aria-hidden="true" />
+                  You are registered
+                </span>
+              ) : isCompleted ? (
+                <span className="text-sm text-ink-500 dark:text-ink-400">
+                  Registration closed — this event has ended.
+                </span>
               ) : (
-                <>
-                  {event.isPaid ? (
-                    <button
-                      onClick={handleEnrollment}
-                      disabled={enrolling || isEnrolled}
-                      className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                    >
-                      <BanknotesIcon className="w-5 h-5" />
-                      <span>Pay & Register</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleEnrollment}
-                      disabled={enrolling || isEnrolled}
-                      className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                    >
-                      {enrolling ? (
-                        <>
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                          <span>Registering...</span>
-                        </>
-                      ) : (
-                        <>
-                          <UserPlusIcon className="w-5 h-5" />
-                          <span>Register</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                </>
+                <Button
+                  onClick={handleEnrollment}
+                  loading={enrolling}
+                  disabled={isFull}
+                  icon={event.isPaid ? BanknotesIcon : UserPlusIcon}
+                >
+                  {isFull ? 'Event full' : event.isPaid ? 'Pay & register' : 'Register for event'}
+                </Button>
               )}
-              
-              {/* Feedback Button - Show for enrolled users or after event */}
-              {currentUser && (isEnrolled || new Date() > new Date(event.dateTime)) && (
+
+              {club ? (
+                <ButtonLink to={`/clubs/${club._id}`} variant="secondary">
+                  View club
+                </ButtonLink>
+              ) : null}
+            </div>
+          </Card>
+
+          {event.content ? (
+            <Card>
+              <CardHeader title="About this event" />
+              <CardBody>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-700 dark:text-ink-200">
+                  {event.content}
+                </p>
+              </CardBody>
+            </Card>
+          ) : null}
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader title="Hosted by" />
+            <CardBody>
+              <p className="text-sm font-semibold text-ink-900 dark:text-white">
+                {club?.name || 'Campus club'}
+              </p>
+              <p className="mt-1 line-clamp-3 text-sm text-ink-500 dark:text-ink-400">
+                {club?.description || 'This event is organised by a campus club.'}
+              </p>
+              {club ? (
+                <ButtonLink to={`/clubs/${club._id}`} variant="secondary" size="sm" className="mt-3">
+                  Open club
+                </ButtonLink>
+              ) : null}
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title="Good to know" />
+            <CardBody className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-ink-500 dark:text-ink-400">Price</span>
+                <span className="font-medium text-ink-900 dark:text-white">
+                  {event.isPaid ? formatCurrency(event.price, event.currency) : 'Free'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-ink-500 dark:text-ink-400">Capacity</span>
+                <span className="font-medium text-ink-900 dark:text-white">
+                  {capacity ? `${capacity} people` : 'Unlimited'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-ink-500 dark:text-ink-400">Status</span>
+                <span className="font-medium text-ink-900 dark:text-white">
+                  {isCompleted ? 'Completed' : 'Open for registration'}
+                </span>
+              </div>
+            </CardBody>
+          </Card>
+
+          {isEnrolled || isCompleted ? (
+            <Card>
+              <CardHeader title="Your feedback" description="Tell the organisers how it went." />
+              <CardBody>
                 <FeedbackButton
                   targetType="event"
                   targetId={event._id}
                   targetInfo={{
                     title: event.name,
                     description: event.description,
-                    club: event.club?.name
+                    club: club?.name,
                   }}
-                  text="Rate Event"
+                  text="Rate this event"
                   buttonVariant="outlined"
-                  sx={{ 
-                    borderColor: '#667eea',
-                    color: '#667eea',
-                    '&:hover': {
-                      backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                    }
-                  }}
                 />
-              )}
-            </div>
-          </div>
+              </CardBody>
+            </Card>
+          ) : null}
         </div>
-
-        {/* Event Content */}
-        {event.content && (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-lg p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Event Details</h2>
-            <div className="prose prose-gray max-w-none">
-              <p className="text-gray-700 whitespace-pre-wrap">{event.content}</p>
-            </div>
-          </div>
-        )}
       </div>
-    </div>
+    </>
   );
 };
 

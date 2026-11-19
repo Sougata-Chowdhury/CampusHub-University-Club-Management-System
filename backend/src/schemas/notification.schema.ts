@@ -14,15 +14,15 @@ export class Notification {
   @Prop({ required: true })
   message: string;
 
-  @Prop({ 
-    required: true, 
+  @Prop({
+    required: true,
     enum: ['club', 'event', 'payment', 'announcement', 'admin', 'system', 'reminder'],
     default: 'system'
   })
   type: string;
 
-  @Prop({ 
-    required: true, 
+  @Prop({
+    required: true,
     enum: ['info', 'success', 'warning', 'error', 'urgent'],
     default: 'info'
   })
@@ -55,7 +55,7 @@ export class Notification {
   @Prop()
   readAt?: Date;
 
-  @Prop({ 
+  @Prop({
     type: {
       email: { type: Boolean, default: false },
       push: { type: Boolean, default: false },

@@ -27,7 +27,6 @@ export class FileService {
     userId: string,
   ): Promise<FileResponseDto> {
     try {
-      console.log('FileService: Uploading file:', file.originalname, 'by user:', userId);
 
       // Create file document
       const fileDocument = new this.fileModel({
@@ -62,7 +61,7 @@ export class FileService {
               .resize(300, 300, { fit: 'inside', withoutEnlargement: true })
               .jpeg({ quality: 80 })
               .toFile(thumbnailPath);
-            
+
             fileDocument.metadata.thumbnailPath = thumbnailPath;
           }
         } catch (error) {
@@ -113,12 +112,11 @@ export class FileService {
     uploadFileDto: UploadFileDto,
     userId: string,
   ): Promise<FileResponseDto[]> {
-    console.log('FileService: Uploading multiple files, count:', files.length);
-    
-    const uploadPromises = files.map(file => 
+
+    const uploadPromises = files.map(file =>
       this.uploadFile(file, uploadFileDto, userId)
     );
-    
+
     return Promise.all(uploadPromises);
   }
 
@@ -128,7 +126,6 @@ export class FileService {
     page: number;
     totalPages: number;
   }> {
-    console.log('FileService: Getting files with query:', queryDto);
 
     const query: any = {};
 
@@ -152,9 +149,9 @@ export class FileService {
           query.mimetype = { $regex: '^audio/', $options: 'i' };
           break;
         case 'document':
-          query.mimetype = { 
-            $regex: '^(application/|text/)', 
-            $options: 'i' 
+          query.mimetype = {
+            $regex: '^(application/|text/)',
+            $options: 'i'
           };
           break;
         default:
@@ -220,7 +217,6 @@ export class FileService {
     page: number;
     totalPages: number;
   }> {
-    console.log('FileService: Searching files with query:', searchQuery);
 
     const query: any = {
       status: { $ne: 'deleted' }, // Exclude deleted files
@@ -258,7 +254,6 @@ export class FileService {
   }
 
   async getFileById(id: string, userId?: string): Promise<FileResponseDto> {
-    console.log('FileService: Getting file by ID:', id);
 
     const file = await this.fileModel.findById(id).exec();
     if (!file) {
@@ -274,7 +269,6 @@ export class FileService {
   }
 
   async updateFile(id: string, updateFileDto: UpdateFileDto, userId: string): Promise<FileResponseDto> {
-    console.log('FileService: Updating file:', id, 'by user:', userId);
 
     const file = await this.fileModel.findById(id).exec();
     if (!file) {
@@ -294,7 +288,6 @@ export class FileService {
   }
 
   async deleteFile(id: string, userId: string): Promise<{ message: string }> {
-    console.log('FileService: Deleting file:', id, 'by user:', userId);
 
     const file = await this.fileModel.findById(id).exec();
     if (!file) {
@@ -323,7 +316,6 @@ export class FileService {
   }
 
   async getFileStats(userId?: string): Promise<any> {
-    console.log('FileService: Getting file statistics');
 
     const baseQuery = userId ? { uploadedBy: userId } : {};
     const activeQuery = { ...baseQuery, status: 'active' };
@@ -340,8 +332,8 @@ export class FileService {
       this.fileModel.countDocuments(activeQuery),
       this.fileModel.countDocuments({ ...activeQuery, mimetype: { $regex: '^image/' } }),
       this.fileModel.countDocuments({ ...activeQuery, mimetype: { $regex: '^video/' } }),
-      this.fileModel.countDocuments({ 
-        ...activeQuery, 
+      this.fileModel.countDocuments({
+        ...activeQuery,
         mimetype: { $in: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'] }
       }),
       this.fileModel.aggregate([
@@ -378,7 +370,6 @@ export class FileService {
     page: number;
     totalPages: number;
   }> {
-    console.log('FileService: Getting public gallery, category:', category, 'page:', page, 'limit:', limit);
 
     const query: any = {
       status: 'active',
@@ -408,7 +399,7 @@ export class FileService {
 
   private toFileResponseDto(file: any): FileResponseDto {
     const baseUrl = process.env.BASE_URL || 'http://localhost:8000';
-    
+
     return {
       id: file._id.toString(),
       filename: file.filename,
@@ -427,7 +418,7 @@ export class FileService {
       tags: file.tags,
       metadata: file.metadata ? {
         ...file.metadata,
-        thumbnailUrl: file.metadata.thumbnailPath ? 
+        thumbnailUrl: file.metadata.thumbnailPath ?
           `${baseUrl}/files/serve/${file._id}/thumbnail` : undefined
       } : undefined,
       createdAt: file.createdAt,

@@ -1,729 +1,477 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { 
-  ClockIcon, 
-  CheckCircleIcon, 
-  ExclamationCircleIcon,
-  UserGroupIcon,
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  ArrowRightIcon,
+  CalendarDaysIcon,
+  ClockIcon,
   Cog6ToothIcon,
-  EyeIcon,
   PlusIcon,
-  CalendarIcon,
   TrashIcon,
-  UserIcon,
-  CogIcon
+  UserGroupIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
-import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
 import { clubService } from '../services/clubService';
+import {
+  Alert,
+  Avatar,
+  Badge,
+  Button,
+  ButtonLink,
+  Card,
+  EmptyState,
+  PageHeader,
+  SegmentedControl,
+  SkeletonCard,
+} from '../ui';
+
+const statusVariant = {
+  approved: 'success',
+  pending: 'warning',
+  rejected: 'danger',
+};
+
+const statusLabel = {
+  approved: 'Approved',
+  pending: 'Pending approval',
+  rejected: 'Rejected',
+};
+
+const formatDate = (value) =>
+  value
+    ? new Date(value).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+    : '—';
 
 const MyClubs = () => {
-  const [clubs, setClubs] = useState([]);
+  const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [notice, setNotice] = useState(location.state?.message || '');
+  const [createdClubs, setCreatedClubs] = useState([]);
+  const [joinedClubs, setJoinedClubs] = useState([]);
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('created');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('owned');
-  const [deleteConfirmation, setDeleteConfirmation] = useState(null);
+  const [actionError, setActionError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [withdrawing, setWithdrawing] = useState(null);
 
+  const userId = user?._id || user?.id;
+
   useEffect(() => {
-    fetchMyClubs();
-    fetchApplications();
+    if (location.state?.message) {
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location, navigate]);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const [myClubs, myApplications] = await Promise.all([
+          clubService.getMyClubs(),
+          clubService.getUserApplications(),
+        ]);
+        if (!active) return;
+        setCreatedClubs(Array.isArray(myClubs?.createdClubs) ? myClubs.createdClubs : []);
+        setJoinedClubs(Array.isArray(myClubs?.joinedClubs) ? myClubs.joinedClubs : []);
+        setApplications(Array.isArray(myApplications) ? myApplications : []);
+      } catch (err) {
+        if (active) setError(err.message || 'Failed to load your clubs');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const fetchMyClubs = async () => {
-    try {
-      const data = await clubService.getMyClubs();
-      console.log('My clubs data:', data);
-      // The API returns { createdClubs: [], joinedClubs: [] }
-      setClubs(data.createdClubs || []);
-    } catch (error) {
-      setError('Failed to fetch your clubs');
-      setClubs([]); // Ensure clubs is always an array
-    }
+  const createdIds = useMemo(
+    () => new Set(createdClubs.map((club) => club._id)),
+    [createdClubs],
+  );
+
+  const memberClubs = useMemo(
+    () =>
+      joinedClubs.filter((club) => {
+        if (createdIds.has(club._id)) return false;
+        const ownerId = club.createdBy?._id || club.createdBy;
+        return ownerId !== userId;
+      }),
+    [joinedClubs, createdIds, userId],
+  );
+
+  const pendingApplications = applications.filter((application) => application.status === 'pending');
+
+  const counts = {
+    created: createdClubs.length,
+    joined: memberClubs.length,
+    applications: applications.length,
   };
 
-  const fetchApplications = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      console.log('Current token:', token ? 'exists' : 'missing');
-
-      const data = await clubService.getUserApplications();
-      console.log('Applications API response:', data);
-      console.log('Applications type:', typeof data);
-      console.log('Applications is array:', Array.isArray(data));
-      console.log('Raw applications data:', JSON.stringify(data, null, 2));
-      setApplications(Array.isArray(data) ? data : []);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching applications:', error);
-      setError('Failed to fetch applications');
-      setApplications([]); // Ensure applications is always an array
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteClub = async (clubId) => {
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
     setDeleting(true);
+    setActionError('');
     try {
-      await clubService.deleteClub(clubId);
-      // Remove the deleted club from the local state
-      setClubs(clubs.filter(club => club._id !== clubId));
-      setDeleteConfirmation(null);
-      setError('');
-    } catch (error) {
-      console.error('Error deleting club:', error);
-      setError(error.message || 'Failed to delete club');
+      await clubService.deleteClub(deleteTarget._id);
+      setCreatedClubs((current) => current.filter((club) => club._id !== deleteTarget._id));
+      setApplications((current) => current.filter((application) => application.club?._id !== deleteTarget._id));
+      setDeleteTarget(null);
+    } catch (err) {
+      setActionError(err.message || 'Failed to delete club');
     } finally {
       setDeleting(false);
     }
   };
 
-  const confirmDelete = (club) => {
-    setDeleteConfirmation(club);
-  };
-
-  const cancelDelete = () => {
-    setDeleteConfirmation(null);
-  };
-
-  const handleWithdrawApplication = async (clubId) => {
+  const handleWithdraw = async (clubId) => {
     setWithdrawing(clubId);
+    setActionError('');
     try {
       await clubService.withdrawApplication(clubId);
-      // Remove the withdrawn application from the local state
-      setApplications(applications.filter(app => app.club._id !== clubId));
-      setError('');
-    } catch (error) {
-      console.error('Error withdrawing application:', error);
-      setError(error.message || 'Failed to withdraw application');
+      setApplications((current) => current.filter((application) => application.club?._id !== clubId));
+    } catch (err) {
+      setActionError(err.message || 'Failed to withdraw application');
     } finally {
       setWithdrawing(null);
     }
   };
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'approved':
-        return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-50 border border-green-200 text-green-800">
-            <CheckCircleIcon className="w-4 h-4 mr-1" />
-            ✅ Approved
-          </span>
-        );
-      case 'pending':
-        return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-yellow-50 border border-yellow-200 text-yellow-800">
-            <ClockIcon className="w-4 h-4 mr-1" />
-            ⏳ Pending Approval
-          </span>
-        );
-      case 'rejected':
-        return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-red-50 border border-red-200 text-red-800">
-            <ExclamationCircleIcon className="w-4 h-4 mr-1" />
-            ❌ Rejected
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-gray-100 border border-gray-300 text-gray-700">
-            ❓ Unknown
-          </span>
-        );
-    }
-  };
+  const tabs = [
+    { value: 'created', label: 'Created', count: counts.created },
+    { value: 'joined', label: 'Joined', count: counts.joined },
+    { value: 'applications', label: 'Applications', count: counts.applications },
+  ];
 
-  if (loading) {
+  const renderCreated = () => {
+    if (createdClubs.length === 0) {
+      return (
+        <EmptyState
+          icon={UserGroupIcon}
+          title="You have not created a club yet"
+          description="Start a club, invite classmates and once an admin approves it you can publish events and manage members."
+          action={<ButtonLink to="/create-club" icon={PlusIcon}>Create a club</ButtonLink>}
+        />
+      );
+    }
+
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center">
-        <div className="text-gray-900 text-xl">Loading your clubs...</div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {createdClubs.map((club) => (
+          <Card key={club._id} hover className="flex flex-col p-5">
+            <div className="flex items-start justify-between gap-3">
+              <Avatar name={club.name} src={club.logoUrl} size="lg" className="rounded-[12px]" />
+              <Badge variant={statusVariant[club.status] || 'neutral'}>
+                {statusLabel[club.status] || club.status || 'Unknown'}
+              </Badge>
+            </div>
+
+            <h3 className="mt-4 truncate text-base font-semibold text-ink-900 dark:text-white">
+              <Link to={`/clubs/${club._id}`} className="hover:text-brand-600 dark:hover:text-brand-300">
+                {club.name}
+              </Link>
+            </h3>
+            <p className="mt-1.5 line-clamp-2 min-h-[2.5rem] text-sm text-ink-500 dark:text-ink-400">
+              {club.description || 'No description provided yet.'}
+            </p>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-ink-500 dark:text-ink-400">
+              <span className="flex items-center gap-1.5">
+                <UserGroupIcon className="h-4 w-4 text-ink-400" aria-hidden="true" />
+                {club.members?.length || 0} member{(club.members?.length || 0) === 1 ? '' : 's'}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <ClockIcon className="h-4 w-4 text-ink-400" aria-hidden="true" />
+                {club.memberApplications?.length || 0} application
+                {(club.memberApplications?.length || 0) === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            <p className="mt-2 text-[11px] text-ink-400 dark:text-ink-500">
+              Created {formatDate(club.createdAt)}
+            </p>
+
+            <div className="mt-auto space-y-2 pt-5">
+              <div className="flex gap-2">
+                {club.status === 'approved' ? (
+                  <ButtonLink
+                    to={`/manage-club/${club._id}`}
+                    size="sm"
+                    fullWidth
+                    icon={Cog6ToothIcon}
+                  >
+                    Manage
+                  </ButtonLink>
+                ) : (
+                  <ButtonLink
+                    to={`/clubs/${club._id}`}
+                    size="sm"
+                    variant="secondary"
+                    fullWidth
+                  >
+                    {club.status === 'pending' ? 'Awaiting approval' : 'View status'}
+                  </ButtonLink>
+                )}
+                <ButtonLink to={`/clubs/${club._id}`} size="sm" variant="secondary" fullWidth>
+                  View
+                </ButtonLink>
+              </div>
+
+              {club.status === 'approved' ? (
+                <div className="flex gap-2">
+                  <Link
+                    to={`/create-event?clubId=${club._id}`}
+                    className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-[8px] border border-ink-200 px-2 text-xs font-medium text-ink-600 transition-colors hover:border-ink-300 hover:bg-ink-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+                  >
+                    <PlusIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                    New event
+                  </Link>
+                  <Link
+                    to={`/club-events/${club._id}`}
+                    className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-[8px] border border-ink-200 px-2 text-xs font-medium text-ink-600 transition-colors hover:border-ink-300 hover:bg-ink-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+                  >
+                    <CalendarDaysIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                    Events
+                  </Link>
+                </div>
+              ) : null}
+
+              <Button
+                variant="ghost"
+                size="xs"
+                fullWidth
+                icon={TrashIcon}
+                onClick={() => setDeleteTarget(club)}
+                className="text-danger-600 hover:bg-danger-50 hover:text-danger-700 dark:text-rose-400 dark:hover:bg-danger-600/10"
+              >
+                Delete club
+              </Button>
+            </div>
+          </Card>
+        ))}
       </div>
     );
-  }
+  };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
-      {/* Navigation */}
-      <nav className="bg-purple-600 border-b border-purple-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link to="/dashboard" className="text-white text-xl font-bold">
-              University Clubs
-            </Link>
-            <div className="flex items-center space-x-4">
-              <Link to="/dashboard" className="text-white hover:text-gray-300 transition-colors">
-                Dashboard
-              </Link>
-              <Link 
-                to="/profile" 
-                className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg transition-colors flex items-center space-x-2"
-              >
-                <UserIcon className="h-4 w-4" />
-                <span>Profile</span>
-              </Link>
-              <Link 
-                to="/settings" 
-                className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-2 rounded-lg transition-colors flex items-center space-x-2"
-              >
-                <CogIcon className="h-4 w-4" />
-                <span>Settings</span>
-              </Link>
+  const renderJoined = () => {
+    if (memberClubs.length === 0) {
+      return (
+        <EmptyState
+          icon={UserGroupIcon}
+          title="You have not joined any clubs yet"
+          description="Browse approved clubs and apply to join one that matches your interests."
+          action={<ButtonLink to="/browse-clubs">Browse clubs</ButtonLink>}
+        />
+      );
+    }
+
+    return (
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {memberClubs.map((club) => (
+          <Card key={club._id} hover className="flex flex-col p-5">
+            <div className="flex items-start justify-between gap-3">
+              <Avatar name={club.name} src={club.logoUrl} size="lg" className="rounded-[12px]" />
+              <Badge variant="brand">{club.category || 'General'}</Badge>
             </div>
-          </div>
-        </div>
-      </nav>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">🏛️ My Clubs Dashboard</h1>
-          <p className="text-xl text-gray-700 mb-6">Manage your clubs and track your applications</p>
-          
-          {/* Quick Stats */}
-          {Array.isArray(clubs) && clubs.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                <div className="text-green-800 text-lg font-bold">
-                  {clubs.filter(club => club.status === 'approved').length}
-                </div>
-                <div className="text-green-700 text-sm">✅ Approved Clubs</div>
-              </div>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <div className="text-yellow-800 text-lg font-bold">
-                  {clubs.filter(club => club.status === 'pending').length}
-                </div>
-                <div className="text-yellow-700 text-sm">⏳ Pending Approval</div>
-              </div>
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                <div className="text-purple-900 text-lg font-bold">
-                  {clubs.reduce((sum, club) => sum + (club.memberApplications?.length || 0), 0)}
-                </div>
-                <div className="text-purple-800 text-sm">📝 Total Applications</div>
-              </div>
+            <h3 className="mt-4 truncate text-base font-semibold text-ink-900 dark:text-white">
+              <Link to={`/clubs/${club._id}`} className="hover:text-brand-600 dark:hover:text-brand-300">
+                {club.name}
+              </Link>
+            </h3>
+            <p className="mt-1.5 line-clamp-2 min-h-[2.5rem] text-sm text-ink-500 dark:text-ink-400">
+              {club.description || 'No description provided yet.'}
+            </p>
+            <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-500 dark:text-ink-400">
+              <UserGroupIcon className="h-4 w-4 text-ink-400" aria-hidden="true" />
+              {club.members?.length || 0} member{(club.members?.length || 0) === 1 ? '' : 's'}
+            </p>
+            <div className="mt-auto flex gap-2 pt-5">
+              <ButtonLink to={`/clubs/${club._id}`} variant="secondary" size="sm" fullWidth>
+                View club
+              </ButtonLink>
+              <ButtonLink to={`/club-events/${club._id}`} size="sm" fullWidth icon={CalendarDaysIcon}>
+                Events
+              </ButtonLink>
             </div>
-          )}
-        </div>
+          </Card>
+        ))}
+      </div>
+    );
+  };
 
-        {/* Tabs */}
-        <div className="bg-purple-50 rounded-2xl p-1 mb-8 border border-gray-200 shadow-lg max-w-md mx-auto">
-          <div className="flex">
-            <button
-              onClick={() => setActiveTab('owned')}
-              className={`flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all flex items-center justify-center ${
-                activeTab === 'owned'
-                  ? 'bg-purple-600 text-white shadow-lg'
-                  : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              🏛️ Owned Clubs
-              {Array.isArray(clubs) && clubs.length > 0 && (
-                <span className="ml-2 bg-white/20 text-xs px-2 py-1 rounded-full">
-                  {clubs.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('applications')}
-              className={`flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all flex items-center justify-center ${
-                activeTab === 'applications'
-                  ? 'bg-purple-600 text-white shadow-lg'
-                  : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              � Member Applications
-              {Array.isArray(clubs) && clubs.some(club => club.memberApplications?.some(app => app.status === 'pending')) && (
-                <span className="ml-2 bg-white/20 text-xs px-2 py-1 rounded-full">
-                  {clubs.reduce((sum, club) => sum + (club.memberApplications?.filter(app => app.status === 'pending').length || 0), 0)}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
+  const renderApplications = () => {
+    if (applications.length === 0) {
+      return (
+        <EmptyState
+          icon={ClockIcon}
+          title="No applications yet"
+          description="When you apply to join a club, you can track its status here."
+          action={<ButtonLink to="/browse-clubs">Find a club</ButtonLink>}
+        />
+      );
+    }
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 max-w-2xl mx-auto">
-            <p className="text-red-800">{error}</p>
-          </div>
-        )}
-
-        {/* Owned Clubs Tab */}
-        {activeTab === 'owned' && (
-          <div>
-            {!Array.isArray(clubs) || clubs.length === 0 ? (
-              <div className="text-center py-12 bg-white border border-gray-200 shadow-lg rounded-2xl">
-                <UserGroupIcon className="w-20 h-20 text-gray-400 mx-auto mb-6" />
-                <h3 className="text-2xl font-semibold text-gray-900 mb-3">🎯 No clubs created yet</h3>
-                <p className="text-gray-700 mb-4 max-w-md mx-auto">
-                  Start building your community by creating your first club! 
-                  Share your interests and connect with like-minded students.
-                </p>
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6 max-w-md mx-auto">
-                  <h4 className="text-purple-900 font-semibold mb-2">💡 Getting Started:</h4>
-                  <ul className="text-purple-800 text-sm text-left space-y-1">
-                    <li>• Create your club with a compelling description</li>
-                    <li>• Wait for admin approval (usually 1-2 days)</li>
-                    <li>• Start accepting members once approved</li>
-                    <li>• Organize events and build your community</li>
-                  </ul>
-                </div>
-                <Link
-                  to="/create-club"
-                  className="inline-flex items-center px-8 py-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold transform transition-all duration-300 hover:scale-105 hover:shadow-xl text-lg"
-                >
-                  <PlusIcon className="w-6 h-6 mr-3" />
-                  Create Your First Club
-                </Link>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {Array.isArray(clubs) && clubs.map((club) => (
-                  <div
-                    key={club._id}
-                    className={`bg-white border border-gray-200 shadow-lg rounded-2xl p-6 transform transition-all duration-300 hover:scale-105 ${
-                      club.status === 'approved' 
-                        ? 'hover:border-green-300' 
-                        : club.status === 'pending'
-                        ? 'hover:border-yellow-300'
-                        : 'hover:border-red-300'
-                    }`}
+    return (
+      <div className="space-y-3">
+        {applications.map((application) => {
+          const club = application.club || {};
+          const pending = application.status === 'pending';
+          return (
+            <Card key={application._id || `${club._id}-${application.appliedAt}`} className="p-4">
+              <div className="flex flex-wrap items-center gap-4">
+                <Avatar name={club.name} size="md" className="rounded-[10px]" />
+                <div className="min-w-0 flex-1">
+                  <Link
+                    to={`/clubs/${club._id}`}
+                    className="block truncate text-sm font-semibold text-ink-900 hover:text-brand-600 dark:text-white dark:hover:text-brand-300"
                   >
-                    {/* Status Badge - More Prominent */}
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex flex-col gap-2">
-                        {getStatusBadge(club.status)}
-                        {club.status === 'pending' && (
-                          <div className="text-yellow-800 text-xs bg-yellow-50 border border-yellow-200 px-2 py-1 rounded">
-                            💡 Waiting for admin approval
-                          </div>
-                        )}
-                        {club.status === 'rejected' && (
-                          <div className="text-red-800 text-xs bg-red-50 border border-red-200 px-2 py-1 rounded">
-                            ❌ Contact admin for details
-                          </div>
-                        )}
-                      </div>
-                      <span className="text-gray-700 text-sm bg-gray-50 border border-gray-200 px-2 py-1 rounded-lg">
-                        📂 {club.category || 'General'}
-                      </span>
-                    </div>
-
-                    {/* Club Info */}
-                    <h3 className="text-xl font-bold text-gray-900 mb-2 flex items-center">
-                      🏛️ {club.name}
-                    </h3>
-                    <p className="text-gray-700 text-sm mb-4 line-clamp-3 leading-relaxed">
-                      {club.description || 'No description provided'}
-                    </p>
-
-                    {/* Enhanced Stats */}
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div className="flex items-center text-gray-700 text-sm bg-gray-50 border border-gray-200 p-2 rounded-lg">
-                        <UserGroupIcon className="w-4 h-4 mr-2 text-purple-600" />
-                        <div>
-                          <div className="font-semibold">{club.members?.length || 0}</div>
-                          <div className="text-xs text-gray-600">Members</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center text-gray-700 text-sm bg-gray-50 border border-gray-200 p-2 rounded-lg">
-                        <ClockIcon className="w-4 h-4 mr-2 text-purple-600" />
-                        <div>
-                          <div className="font-semibold">{club.memberApplications?.length || 0}</div>
-                          <div className="text-xs text-gray-600">Applications</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Creation Date */}
-                    <div className="text-gray-700 text-xs mb-4 bg-gray-50 border border-gray-200 p-2 rounded-lg">
-                      📅 Created: {new Date(club.createdAt).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      })}
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex flex-col gap-2">
-                      <div className="flex gap-2">
-                        {club.status === 'approved' && (
-                          <Link
-                            to={`/manage-club/${club._id}`}
-                            className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded-lg font-semibold text-center text-sm transform transition-all duration-300 hover:scale-105 hover:shadow-lg"
-                          >
-                            <Cog6ToothIcon className="w-4 h-4 inline mr-1" />
-                            Manage Club
-                          </Link>
-                        )}
-                        {club.status === 'pending' && (
-                          <div className="flex-1 bg-yellow-50 border border-yellow-200 text-yellow-800 py-2 px-3 rounded-lg text-center text-sm">
-                            <ClockIcon className="w-4 h-4 inline mr-1" />
-                            Awaiting Approval
-                          </div>
-                        )}
-                        {club.status === 'rejected' && (
-                          <div className="flex-1 bg-red-50 border border-red-200 text-red-800 py-2 px-3 rounded-lg text-center text-sm">
-                            <ExclamationCircleIcon className="w-4 h-4 inline mr-1" />
-                            Rejected
-                          </div>
-                        )}
-                        <Link
-                          to={`/clubs/${club._id}`}
-                          className="flex-1 bg-white border border-gray-300 text-gray-900 py-2 px-3 rounded-lg hover:bg-gray-50 transition-colors text-center text-sm"
-                        >
-                          <EyeIcon className="w-4 h-4 inline mr-1" />
-                          View Details
-                        </Link>
-                      </div>
-                      
-                      {/* Event Management - Only for approved clubs */}
-                      {club.status === 'approved' && (
-                        <div className="flex gap-2">
-                          <Link
-                            to={`/create-event?clubId=${club._id}`}
-                            className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded-lg font-semibold text-center text-sm transform transition-all duration-300 hover:scale-105 hover:shadow-lg"
-                          >
-                            <PlusIcon className="w-4 h-4 inline mr-1" />
-                            Create Event
-                          </Link>
-                          <Link
-                            to={`/club-events/${club._id}`}
-                            className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded-lg font-semibold text-center text-sm transform transition-all duration-300 hover:scale-105 hover:shadow-lg"
-                          >
-                            <CalendarIcon className="w-4 h-4 inline mr-1" />
-                            View Events
-                          </Link>
-                        </div>
-                      )}
-
-                      {/* Delete Club Button */}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => confirmDelete(club)}
-                          className="w-full bg-red-50 border border-red-200 text-red-800 py-2 px-3 rounded-lg hover:bg-red-100 hover:border-red-300 transition-colors text-center text-sm font-medium"
-                        >
-                          <TrashIcon className="w-4 h-4 inline mr-1" />
-                          Delete Club
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Applications Tab */}
-        {activeTab === 'applications' && (
-          <div>
-            {!Array.isArray(clubs) || clubs.length === 0 ? (
-              <div className="text-center py-12 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/20">
-                <UserGroupIcon className="w-20 h-20 text-gray-400 mx-auto mb-6" />
-                <h3 className="text-2xl font-semibold text-white mb-3">🏛️ No clubs created yet</h3>
-                <p className="text-gray-300 mb-4 max-w-md mx-auto">
-                  Create a club first to receive membership applications from other students!
-                </p>
-                <Link
-                  to="/create-club"
-                  className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-xl font-semibold transform transition-all duration-300 hover:scale-105 hover:shadow-xl text-lg"
-                >
-                  <PlusIcon className="w-6 h-6 mr-3" />
-                  Create Your First Club
-                </Link>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Applications Overview */}
-                <div className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-                  <h2 className="text-2xl font-bold text-white mb-4 flex items-center">
-                    📨 Membership Applications Overview
-                  </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-white/10 rounded-xl p-4 text-center">
-                      <div className="text-3xl font-bold text-blue-300">
-                        {clubs.reduce((sum, club) => sum + (club.memberApplications?.filter(app => app.status === 'pending').length || 0), 0)}
-                      </div>
-                      <div className="text-blue-200 text-sm">⏳ Pending Applications</div>
-                    </div>
-                    <div className="bg-white/10 rounded-xl p-4 text-center">
-                      <div className="text-3xl font-bold text-green-300">
-                        {clubs.reduce((sum, club) => sum + (club.memberApplications?.filter(app => app.status === 'approved').length || 0), 0)}
-                      </div>
-                      <div className="text-green-200 text-sm">✅ Approved Applications</div>
-                    </div>
-                    <div className="bg-white/10 rounded-xl p-4 text-center">
-                      <div className="text-3xl font-bold text-purple-300">
-                        {clubs.reduce((sum, club) => sum + (club.memberApplications?.length || 0), 0)}
-                      </div>
-                      <div className="text-purple-200 text-sm">📊 Total Applications</div>
-                    </div>
-                  </div>
+                    {club.name || 'Club'}
+                  </Link>
+                  <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
+                    {club.category ? `${club.category} · ` : ''}
+                    Applied {formatDate(application.appliedAt)}
+                  </p>
                 </div>
-
-                {/* Applications by Club */}
-                {clubs.map((club) => {
-                  const pendingApplications = club.memberApplications?.filter(app => app.status === 'pending') || [];
-                  const approvedApplications = club.memberApplications?.filter(app => app.status === 'approved') || [];
-                  const totalApplications = club.memberApplications?.length || 0;
-
-                  if (totalApplications === 0) return null;
-
-                  return (
-                    <div
-                      key={club._id}
-                      className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 overflow-hidden"
-                    >
-                      {/* Club Header */}
-                      <div className="bg-gradient-to-r from-purple-600/30 to-blue-600/30 p-6 border-b border-white/20">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-2xl font-bold text-white flex items-center mb-2">
-                              🏛️ {club.name}
-                              <span className="ml-3 text-sm bg-white/20 px-3 py-1 rounded-full">
-                                {getStatusBadge(club.status)}
-                              </span>
-                            </h3>
-                            <p className="text-gray-300 text-sm max-w-2xl">
-                              {club.description || 'No description provided'}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-3xl font-bold text-white">{totalApplications}</div>
-                            <div className="text-gray-300 text-sm">Total Applications</div>
-                          </div>
-                        </div>
-                        
-                        {/* Quick Stats */}
-                        <div className="grid grid-cols-3 gap-4 mt-4">
-                          <div className="bg-yellow-500/20 border border-yellow-400/50 rounded-lg p-3 text-center">
-                            <div className="text-yellow-200 text-lg font-bold">{pendingApplications.length}</div>
-                            <div className="text-yellow-300 text-xs">⏳ Pending</div>
-                          </div>
-                          <div className="bg-green-500/20 border border-green-400/50 rounded-lg p-3 text-center">
-                            <div className="text-green-200 text-lg font-bold">{approvedApplications.length}</div>
-                            <div className="text-green-300 text-xs">✅ Approved</div>
-                          </div>
-                          <div className="bg-blue-500/20 border border-blue-400/50 rounded-lg p-3 text-center">
-                            <div className="text-blue-200 text-lg font-bold">{club.members?.length || 0}</div>
-                            <div className="text-blue-300 text-xs">👥 Members</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Applications List */}
-                      <div className="p-6">
-                        {pendingApplications.length > 0 && (
-                          <div className="mb-6">
-                            <h4 className="text-lg font-semibold text-yellow-200 mb-3 flex items-center">
-                              ⏳ Pending Applications ({pendingApplications.length})
-                            </h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {pendingApplications.slice(0, 6).map((application, index) => (
-                                <div
-                                  key={index}
-                                  className="bg-yellow-500/10 border border-yellow-400/30 rounded-xl p-4 hover:bg-yellow-500/20 transition-colors"
-                                >
-                                  <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center">
-                                      <div className="w-10 h-10 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-full flex items-center justify-center text-white font-bold">
-                                        {(application.userId?.firstName?.[0] || 'U').toUpperCase()}
-                                      </div>
-                                      <div className="ml-3">
-                                        <div className="text-white font-semibold text-sm">
-                                          {application.userId?.firstName || 'Unknown'} {application.userId?.lastName || 'User'}
-                                        </div>
-                                        <div className="text-gray-400 text-xs">
-                                          {application.userId?.email || 'No email'}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="text-gray-300 text-xs mb-3">
-                                    📅 Applied: {new Date(application.appliedAt).toLocaleDateString('en-US', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })}
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => {/* Handle approve */}}
-                                      className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-3 rounded-lg text-xs font-semibold transition-colors"
-                                    >
-                                      ✅ Approve
-                                    </button>
-                                    <button
-                                      onClick={() => {/* Handle reject */}}
-                                      className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-3 rounded-lg text-xs font-semibold transition-colors"
-                                    >
-                                      ❌ Reject
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                            {pendingApplications.length > 6 && (
-                              <div className="text-center mt-4">
-                                <Link
-                                  to={`/manage-club/${club._id}?tab=applications`}
-                                  className="inline-flex items-center text-yellow-300 hover:text-yellow-200 text-sm font-semibold"
-                                >
-                                  View all {pendingApplications.length} pending applications →
-                                </Link>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {approvedApplications.length > 0 && (
-                          <div>
-                            <h4 className="text-lg font-semibold text-green-200 mb-3 flex items-center">
-                              ✅ Recent Approved Members ({approvedApplications.length})
-                            </h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                              {approvedApplications.slice(0, 8).map((application, index) => (
-                                <div
-                                  key={index}
-                                  className="bg-green-500/10 border border-green-400/30 rounded-lg p-3 text-center"
-                                >
-                                  <div className="w-8 h-8 bg-gradient-to-r from-green-400 to-blue-400 rounded-full flex items-center justify-center text-white font-bold text-sm mx-auto mb-2">
-                                    {(application.userId?.firstName?.[0] || 'U').toUpperCase()}
-                                  </div>
-                                  <div className="text-white text-sm font-semibold">
-                                    {application.userId?.firstName || 'Unknown'}
-                                  </div>
-                                  <div className="text-green-300 text-xs">
-                                    Member since {new Date(application.approvedAt || application.appliedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                            {approvedApplications.length > 8 && (
-                              <div className="text-center mt-3">
-                                <Link
-                                  to={`/manage-club/${club._id}?tab=members`}
-                                  className="inline-flex items-center text-green-300 hover:text-green-200 text-sm font-semibold"
-                                >
-                                  View all {approvedApplications.length} members →
-                                </Link>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Quick Actions */}
-                        <div className="mt-6 pt-4 border-t border-white/10">
-                          <div className="flex flex-wrap gap-3">
-                            <Link
-                              to={`/manage-club/${club._id}?tab=applications`}
-                              className="flex items-center px-4 py-2 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-lg font-semibold text-sm hover:scale-105 transition-transform"
-                            >
-                              <Cog6ToothIcon className="w-4 h-4 mr-2" />
-                              Manage Applications
-                            </Link>
-                            <Link
-                              to={`/clubs/${club._id}`}
-                              className="flex items-center px-4 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-sm hover:bg-white/20 transition-colors"
-                            >
-                              <EyeIcon className="w-4 h-4 mr-2" />
-                              View Club
-                            </Link>
-                            {pendingApplications.length > 0 && (
-                              <div className="flex items-center px-3 py-2 bg-yellow-500/20 border border-yellow-400/50 text-yellow-200 rounded-lg text-sm">
-                                <ClockIcon className="w-4 h-4 mr-2" />
-                                {pendingApplications.length} need attention
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* No Applications Message */}
-                {clubs.every(club => (club.memberApplications?.length || 0) === 0) && (
-                  <div className="text-center py-12 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/20">
-                    <ClockIcon className="w-20 h-20 text-gray-400 mx-auto mb-6" />
-                    <h3 className="text-2xl font-semibold text-white mb-3">📝 No applications yet</h3>
-                    <p className="text-gray-300 mb-4 max-w-md mx-auto">
-                      Once your clubs are approved, students will be able to apply to join them. Applications will appear here for you to review.
-                    </p>
-                    <div className="bg-blue-500/10 border border-blue-400/30 rounded-lg p-4 mb-6 max-w-md mx-auto">
-                      <h4 className="text-blue-200 font-semibold mb-2">💡 Tips to get applications:</h4>
-                      <ul className="text-blue-300 text-sm text-left space-y-1">
-                        <li>• Make sure your clubs are approved by admin</li>
-                        <li>• Write compelling club descriptions</li>
-                        <li>• Create engaging events to attract members</li>
-                        <li>• Share your club with fellow students</li>
-                      </ul>
-                    </div>
-                  </div>
+                <Badge variant={statusVariant[application.status] || 'neutral'}>
+                  {statusLabel[application.status] || application.status || 'Unknown'}
+                </Badge>
+                {pending ? (
+                  <Button
+                    variant="danger-soft"
+                    size="sm"
+                    loading={withdrawing === club._id}
+                    onClick={() => handleWithdraw(club._id)}
+                  >
+                    Withdraw
+                  </Button>
+                ) : (
+                  <ButtonLink to={`/clubs/${club._id}`} variant="secondary" size="sm" icon={ArrowRightIcon}>
+                    View club
+                  </ButtonLink>
                 )}
               </div>
-            )}
+            </Card>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Manage"
+        title="My clubs"
+        description="Track the clubs you lead, the communities you belong to, and your pending applications."
+        actions={<ButtonLink to="/create-club" icon={PlusIcon}>Create club</ButtonLink>}
+      />
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Clubs you lead</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">{counts.created}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Clubs you belong to</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">{counts.joined}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Pending applications</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">
+            {pendingApplications.length}
+          </p>
+        </Card>
+      </div>
+
+      <div className="mt-6">
+        <SegmentedControl options={tabs} value={tab} onChange={setTab} label="Club view" />
+      </div>
+
+      {notice ? (
+        <Alert
+          variant="success"
+          className="mt-4"
+          action={
+            <button
+              type="button"
+              onClick={() => setNotice('')}
+              className="rounded-[6px] p-1 text-success-700 transition-colors hover:bg-success-100 dark:text-emerald-200 dark:hover:bg-success-600/20"
+              aria-label="Dismiss message"
+            >
+              <XMarkIcon className="h-4 w-4" aria-hidden="true" />
+            </button>
+          }
+        >
+          {notice}
+        </Alert>
+      ) : null}
+      {error ? (
+        <Alert variant="error" className="mt-4" title="We could not load your clubs">
+          {error}
+        </Alert>
+      ) : null}
+      {actionError ? (
+        <Alert variant="error" className="mt-4">
+          {actionError}
+        </Alert>
+      ) : null}
+
+      <div className="mt-5">
+        {loading ? (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <SkeletonCard key={index} />
+            ))}
           </div>
+        ) : tab === 'created' ? (
+          renderCreated()
+        ) : tab === 'joined' ? (
+          renderJoined()
+        ) : (
+          renderApplications()
         )}
       </div>
-      
-      {/* Delete Confirmation Modal */}
-      {deleteConfirmation && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 max-w-md w-full">
-            <div className="text-center">
-              <TrashIcon className="w-16 h-16 text-red-400 mx-auto mb-4" />
-              <h3 className="text-xl font-bold text-white mb-2">Delete Club</h3>
-              <p className="text-gray-300 mb-4">
-                Are you sure you want to delete <span className="font-semibold text-white">"{deleteConfirmation.name}"</span>?
-              </p>
-              <div className="bg-red-500/10 border border-red-400/50 rounded-lg p-3 mb-6">
-                <p className="text-red-200 text-sm">
-                  ⚠️ This action cannot be undone. All club data, members, and events will be permanently removed.
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={cancelDelete}
-                  disabled={deleting}
-                  className="flex-1 bg-gray-500/20 border border-gray-400/50 text-gray-200 py-3 px-4 rounded-lg hover:bg-gray-500/30 transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleDeleteClub(deleteConfirmation._id)}
-                  disabled={deleting}
-                  className="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 px-4 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {deleting ? (
-                    <div className="flex items-center justify-center">
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                      Deleting...
-                    </div>
-                  ) : (
-                    <>
-                      <TrashIcon className="w-4 h-4 inline mr-1" />
-                      Delete Club
-                    </>
-                  )}
-                </button>
-              </div>
+
+      {deleteTarget ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-club-title"
+        >
+          <div className="w-full max-w-md rounded-card border border-ink-200 bg-white p-6 shadow-pop dark:border-ink-800 dark:bg-ink-900">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-danger-50 text-danger-600 dark:bg-danger-600/15 dark:text-rose-400">
+              <TrashIcon className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <h2 id="delete-club-title" className="mt-4 text-lg font-semibold text-ink-900 dark:text-white">
+              Delete “{deleteTarget.name}”?
+            </h2>
+            <p className="mt-1.5 text-sm text-ink-500 dark:text-ink-400">
+              This permanently removes the club, its members and all of its events. This cannot be undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button variant="danger" loading={deleting} onClick={handleDelete}>
+                Delete club
+              </Button>
             </div>
           </div>
         </div>
-      )}
-      
-      {/* Floating Action Button */}
-      <Link
-        to="/create-club"
-        className="fixed bottom-8 right-8 bg-gradient-to-r from-purple-500 to-blue-500 text-white p-4 rounded-full shadow-2xl transform transition-all duration-300 hover:scale-110 hover:shadow-purple-500/25 z-50"
-        title="Create New Club"
-      >
-        <PlusIcon className="w-6 h-6" />
-      </Link>
-    </div>
+      ) : null}
+    </>
   );
 };
 

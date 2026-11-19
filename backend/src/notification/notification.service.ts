@@ -25,7 +25,7 @@ export class NotificationService {
       // Check user preferences
       const userPrefs = user.settings || {};
       const shouldSend = this.shouldSendNotification(createNotificationDto.type || 'info', userPrefs);
-      
+
       if (!shouldSend) {
         throw new BadRequestException('Notification type disabled for user');
       }
@@ -37,14 +37,13 @@ export class NotificationService {
       });
 
       const savedNotification = await notification.save();
-      
+
       // Send real-time notification if inApp channel is enabled
       if (savedNotification.channels.inApp) {
         try {
           this.notificationGateway.sendNotificationToUser(userId, savedNotification);
         } catch (error) {
-          console.log('WebSocket not available:', error.message);
-        }
+                  }
       }
 
       // TODO: Implement email and push notification sending
@@ -68,27 +67,27 @@ export class NotificationService {
     let failed = 0;
 
     const { userIds, filters, ...notificationData } = bulkNotificationDto;
-    
+
     // Get target users
     let targetUsers: UserDocument[] = [];
-    
+
     if (userIds && userIds.length > 0) {
       targetUsers = await this.userModel.find({ _id: { $in: userIds } });
     } else if (filters) {
       const query: any = {};
-      
+
       if (filters.clubs) {
         query.joinedClubs = { $in: filters.clubs };
       }
-      
+
       if (filters.roles) {
         query.role = { $in: filters.roles };
       }
-      
+
       if (filters.departments) {
         query.department = { $in: filters.departments };
       }
-      
+
       targetUsers = await this.userModel.find(query);
     }
 
@@ -108,14 +107,14 @@ export class NotificationService {
 
   // Get user notifications
   async getUserNotifications(
-    userId: string, 
-    page: number = 1, 
+    userId: string,
+    page: number = 1,
     limit: number = 20,
     unreadOnly: boolean = false
   ): Promise<{ notifications: Notification[]; total: number; unreadCount: number }> {
     const skip = (page - 1) * limit;
     const query: any = { userId: new Types.ObjectId(userId) };
-    
+
     if (unreadOnly) {
       query.read = false;
     }
@@ -277,14 +276,12 @@ export class NotificationService {
   // Placeholder for email notification
   private async sendEmailNotification(user: UserDocument, notification: NotificationDocument): Promise<void> {
     // TODO: Implement email service integration
-    console.log(`Email notification sent to ${user.email}:`, notification.title);
-  }
+      }
 
   // Placeholder for push notification
   private async sendPushNotification(user: UserDocument, notification: NotificationDocument): Promise<void> {
     // TODO: Implement push notification service integration
-    console.log(`Push notification sent to user ${user._id}:`, notification.title);
-  }
+      }
 
   // Create system notifications for common events
   async createClubApprovalNotification(userId: string, clubName: string, clubId: string): Promise<void> {

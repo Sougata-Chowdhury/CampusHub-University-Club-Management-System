@@ -1,161 +1,134 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { EyeIcon, EyeSlashIcon, LockClosedIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
+import AuthLayout from '../layout/AuthLayout';
+import { Alert, Button, Field, Input } from '../ui';
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  });
+  const [formData, setFormData] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      const result = await login(formData.email, formData.password);
+      const result = await login(formData.email.trim(), formData.password);
       if (result.success) {
-        navigate('/dashboard');
+        navigate(location.state?.from || '/dashboard', { replace: true });
       } else {
-        setError(result.error);
+        setError(result.error || 'Those credentials did not match our records.');
       }
-    } catch (error) {
+    } catch (err) {
       setError('Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-  };
+  const handleChange = (event) =>
+    setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-white opacity-50"></div>
-      
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-300 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-pulse"></div>
-      </div>
-
-      <div className="relative z-10 w-full max-w-md">
-        <div className="bg-white rounded-3xl shadow-2xl border border-gray-200 p-8 transform transition-all duration-500 hover:scale-105">
-          {/* Logo/Header */}
-          <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mx-auto mb-4 flex items-center justify-center shadow-lg">
-              <span className="text-white text-2xl font-bold">UC</span>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              University Club Portal
-            </h1>
-            <p className="text-gray-600 text-base">Sign in to access your academic community</p>
-          </div>
-
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-100 border border-red-400 rounded-lg p-3 mb-6">
-              <p className="text-red-700 text-sm">{error}</p>
-            </div>
-          )}
-
-          {/* Login Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-gray-700 text-sm font-medium mb-2">
-                Email Address
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-transparent transition-all duration-300"
-                placeholder="Enter your email"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-700 text-sm font-medium mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-transparent transition-all duration-300 pr-12"
-                  placeholder="Enter your password"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
-                >
-                  {showPassword ? (
-                    <EyeSlashIcon className="w-5 h-5" />
-                  ) : (
-                    <EyeIcon className="w-5 h-5" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 px-6 rounded-xl font-semibold transform transition-all duration-300 hover:scale-105 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in to manage your clubs, events and campus life."
+      footer={
+        <div className="space-y-5">
+          <p className="text-center text-sm text-ink-500 dark:text-ink-400">
+            New to CampusHub?{' '}
+            <Link
+              to="/register"
+              className="font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
             >
-              {loading ? (
-                <div className="flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Signing In...
-                </div>
-              ) : (
-                'Sign In'
-              )}
-            </button>
-          </form>
+              Create an account
+            </Link>
+          </p>
 
-          {/* Links */}
-          <div className="mt-8 text-center space-y-4">
-            <p className="text-gray-700">
-              Don't have an account?{' '}
-              <Link
-                to="/register"
-                className="text-purple-600 hover:text-purple-700 font-semibold transition-colors"
-              >
-                Create Account
-              </Link>
-            </p>
-            
-            <div className="border-t border-gray-200 pt-4">
-              <Link
-                to="/admin"
-                className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 hover:text-gray-900 transition-all duration-300"
-              >
-                <span className="w-2 h-2 bg-red-400 rounded-full mr-2"></span>
-                Admin Access
-              </Link>
-            </div>
-          </div>
+          <Link
+            to="/admin"
+            className="flex items-center gap-3 rounded-[10px] border border-ink-200 bg-ink-50/60 px-4 py-3 text-sm transition-colors hover:border-ink-300 hover:bg-ink-50 dark:border-ink-800 dark:bg-ink-900/60 dark:hover:border-ink-700"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-ink-600 shadow-sm ring-1 ring-inset ring-ink-200 dark:bg-ink-800 dark:text-ink-300 dark:ring-ink-700">
+              <ShieldCheckIcon className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium text-ink-800 dark:text-ink-100">
+                Administrator access
+              </span>
+              <span className="block text-xs text-ink-500 dark:text-ink-400">
+                Use the dedicated admin portal
+              </span>
+            </span>
+            <span aria-hidden="true" className="text-ink-400">
+              →
+            </span>
+          </Link>
         </div>
-      </div>
-    </div>
+      }
+    >
+      {error ? (
+        <Alert variant="error" className="mb-5">
+          {error}
+        </Alert>
+      ) : null}
+
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <Field label="Email address" htmlFor="email" required>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            autoFocus
+            required
+            placeholder="you@university.edu"
+            value={formData.email}
+            onChange={handleChange}
+          />
+        </Field>
+
+        <Field label="Password" htmlFor="password" required>
+          <div className="relative">
+            <Input
+              id="password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              required
+              placeholder="Enter your password"
+              className="pr-11"
+              value={formData.password}
+              onChange={handleChange}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((visible) => !visible)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-2 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-600 dark:hover:bg-ink-800 dark:hover:text-ink-200"
+            >
+              {showPassword ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+            </button>
+          </div>
+        </Field>
+
+        <Button type="submit" size="lg" fullWidth loading={loading}>
+          {loading ? 'Signing in…' : 'Sign in'}
+        </Button>
+      </form>
+
+      <p className="mt-5 flex items-center justify-center gap-1.5 text-xs text-ink-400 dark:text-ink-500">
+        <LockClosedIcon className="h-3.5 w-3.5" aria-hidden="true" />
+        Your session is secured with JWT authentication.
+      </p>
+    </AuthLayout>
   );
 };
 

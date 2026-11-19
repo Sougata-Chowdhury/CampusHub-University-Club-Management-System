@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import api from '../services/api';
 
 const AuthContext = createContext({});
 
@@ -11,173 +11,155 @@ export const useAuth = () => {
   return context;
 };
 
+const readStoredUser = () => {
+  try {
+    const raw = localStorage.getItem('user');
+    if (!raw || raw === 'undefined') return null;
+    return JSON.parse(raw);
+  } catch (error) {
+    return null;
+  }
+};
+
+const persistUser = (nextUser) => {
+  try {
+    if (nextUser) {
+      localStorage.setItem('user', JSON.stringify(nextUser));
+    } else {
+      localStorage.removeItem('user');
+    }
+  } catch (error) {
+    /* storage may be unavailable */
+  }
+};
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(readStoredUser);
   const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-
-  // Create axios instance with interceptors
-  const api = axios.create({
-    baseURL: API_URL,
-  });
-
-  // Request interceptor to add token
-  api.interceptors.request.use((config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  });
-
-  // Response interceptor to handle token expiration
-  api.interceptors.response.use(
-    (response) => response,
-    (error) => {
-      if (error.response?.status === 401) {
-        logout();
-      }
-      return Promise.reject(error);
-    }
-  );
-
-  // Check authentication status on app load
-  useEffect(() => {
-    checkAuthStatus();
+  const clearSession = useCallback(() => {
+    localStorage.removeItem('token');
+    persistUser(null);
+    setUser(null);
   }, []);
 
-  const checkAuthStatus = async () => {
-    const token = localStorage.getItem('token');
-    
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+  // Validate the stored token once on app start.
+  useEffect(() => {
+    let active = true;
 
-    try {
-      const response = await api.get('/users/profile');
-      if (response.data) {
-        setUser(response.data);
-        setIsAuthenticated(true);
+    const checkAuthStatus = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        if (active) setLoading(false);
+        return;
       }
-    } catch (error) {
-      console.error('Auth check failed:', error);
-      // Clear invalid token
-      localStorage.removeItem('token');
-      setUser(null);
-      setIsAuthenticated(false);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const login = async (email, password, isAdmin = false) => {
+      try {
+        const response = await api.get('/users/profile');
+        if (!active) return;
+        setUser(response.data);
+        persistUser(response.data);
+      } catch (error) {
+        if (!active) return;
+        // 401/403 means the token is no longer valid; network errors keep the cached user.
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          clearSession();
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    checkAuthStatus();
+    return () => {
+      active = false;
+    };
+  }, [clearSession]);
+
+  const login = useCallback(async (email, password, isAdmin = false) => {
     try {
       const endpoint = isAdmin ? '/auth/admin/login' : '/auth/login';
       const response = await api.post(endpoint, { email, password });
-      
       const { token, user: userData } = response.data;
-      
-      // Store token in localStorage (minimal localStorage usage)
+
       localStorage.setItem('token', token);
-      
+      persistUser(userData);
       setUser(userData);
-      setIsAuthenticated(true);
-      
+
       return { success: true, user: userData };
     } catch (error) {
-      console.error('Login failed:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.message || 'Login failed' 
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Login failed. Please check your details.',
       };
     }
-  };
+  }, []);
 
-  const register = async (userData) => {
+  const register = useCallback(async (userData) => {
     try {
-      // Transform data to match backend DTO
-      const registrationData = {
+      const response = await api.post('/auth/register', {
         firstName: userData.firstName,
         lastName: userData.lastName,
         email: userData.email,
-        password: userData.password
-      };
-      
-      const response = await api.post('/auth/register', registrationData);
-      
+        password: userData.password,
+      });
       const { token, user: newUser } = response.data;
-      
-      // Store token in localStorage
+
       localStorage.setItem('token', token);
-      
+      persistUser(newUser);
       setUser(newUser);
-      setIsAuthenticated(true);
-      
+
       return { success: true, user: newUser };
     } catch (error) {
-      console.error('Registration failed:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.message || 'Registration failed' 
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Registration failed. Please try again.',
       };
     }
-  };
+  }, []);
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
-    setIsAuthenticated(false);
-  };
+  const logout = useCallback(() => {
+    clearSession();
+  }, [clearSession]);
 
-  const updateUser = async (userData) => {
+  const updateUser = useCallback(async (userData) => {
     try {
       const response = await api.put('/users/profile', userData);
-      if (response.data) {
-        setUser(response.data);
-        return { success: true, user: response.data };
-      }
+      setUser(response.data);
+      persistUser(response.data);
+      return { success: true, user: response.data };
     } catch (error) {
-      console.error('Update user failed:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.message || 'Update failed' 
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Update failed',
       };
     }
-  };
+  }, []);
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     try {
       const response = await api.get('/users/profile');
-      if (response.data) {
-        setUser(response.data);
-        return response.data;
-      }
+      setUser(response.data);
+      persistUser(response.data);
+      return response.data;
     } catch (error) {
-      console.error('Refresh profile failed:', error);
       return null;
     }
-  };
+  }, []);
 
   const value = {
     user,
-    isAuthenticated,
+    isAuthenticated: Boolean(user),
     loading,
     login,
     register,
     logout,
     updateUser,
     refreshProfile,
-    api, // Expose configured api instance
+    api,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export default AuthContext;

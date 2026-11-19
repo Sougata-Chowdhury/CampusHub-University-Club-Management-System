@@ -1,25 +1,6 @@
-import axios from 'axios';
+import api from './api';
 
 class ReportService {
-  constructor() {
-    this.baseURL = process.env.REACT_APP_API_URL || 
-      (process.env.NODE_ENV === 'production' 
-        ? 'https://university-club-management-system.onrender.com'
-        : 'http://localhost:8000');
-    this.api = axios.create({
-      baseURL: this.baseURL,
-    });
-
-    // Add auth interceptor
-    this.api.interceptors.request.use((config) => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-      return config;
-    });
-  }
-
   // Report types and categories
   getReportTypes() {
     return [
@@ -66,7 +47,7 @@ class ReportService {
       formData.append('attachments', file);
     });
 
-    const response = await this.api.post('/reports', formData, {
+    const response = await api.post('/reports', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -82,7 +63,7 @@ class ReportService {
       ...filters,
     });
 
-    const response = await this.api.get(`/reports/my-reports?${params}`);
+    const response = await api.get(`/reports/my-reports?${params}`);
     return response.data;
   }
 
@@ -94,12 +75,12 @@ class ReportService {
       ...filters,
     });
 
-    const response = await this.api.get(`/reports?${params}`);
+    const response = await api.get(`/reports?${params}`);
     return response.data;
   }
 
   async updateReportStatus(reportId, status, adminNotes = '', actionTaken = '') {
-    const response = await this.api.put(`/reports/${reportId}/status`, {
+    const response = await api.put(`/reports/${reportId}/status`, {
       status,
       adminNotes,
       actionTaken,
@@ -108,17 +89,17 @@ class ReportService {
   }
 
   async takeActionOnReportedItem(reportId) {
-    const response = await this.api.post(`/reports/${reportId}/take-action`);
+    const response = await api.post(`/reports/${reportId}/take-action`);
     return response.data;
   }
 
   async deleteReport(reportId) {
-    const response = await this.api.delete(`/reports/${reportId}`);
+    const response = await api.delete(`/reports/${reportId}`);
     return response.data;
   }
 
   async getReportStats() {
-    const response = await this.api.get('/reports/stats');
+    const response = await api.get('/reports/stats');
     return response.data;
   }
 
@@ -193,4 +174,6 @@ class ReportService {
   }
 }
 
-export default new ReportService();
+const reportService = new ReportService();
+
+export default reportService;

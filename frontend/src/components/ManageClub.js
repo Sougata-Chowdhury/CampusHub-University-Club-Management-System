@@ -1,391 +1,482 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { 
-  CheckCircleIcon, 
-  XCircleIcon,
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import {
+  ArrowLeftIcon,
+  CalendarDaysIcon,
+  CheckCircleIcon,
   ClockIcon,
-  UserGroupIcon,
+  Cog6ToothIcon,
+  CurrencyDollarIcon,
   EnvelopeIcon,
-  CalendarIcon,
   MapPinIcon,
-  CogIcon,
-  CurrencyDollarIcon
+  UserGroupIcon,
+  UserMinusIcon,
+  XCircleIcon,
 } from '@heroicons/react/24/outline';
-import { authService } from '../services/authService';
-import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
+import { clubService } from '../services/clubService';
+import {
+  Alert,
+  Avatar,
+  Badge,
+  Button,
+  ButtonLink,
+  Card,
+  CardBody,
+  CardHeader,
+  EmptyState,
+  PageHeader,
+  PageSkeleton,
+} from '../ui';
+
+const idOf = (value) => (value && typeof value === 'object' ? value._id || value.id : value);
+
+const formatDate = (value) =>
+  value
+    ? new Date(value).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+    : '—';
+
+const fullName = (person) =>
+  [person?.firstName, person?.lastName].filter(Boolean).join(' ') || 'Campus student';
 
 const ManageClub = () => {
   const { clubId } = useParams();
+  const { user } = useAuth();
+
   const [club, setClub] = useState(null);
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [actionLoading, setActionLoading] = useState(null);
-  const [removeLoading, setRemoveLoading] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
+  const [notice, setNotice] = useState('');
+  const [actionId, setActionId] = useState(null);
+  const [removeTarget, setRemoveTarget] = useState(null);
+  const [removing, setRemoving] = useState(false);
 
-  useEffect(() => {
-    fetchCurrentUser();
-    fetchClubDetails();
-    fetchApplications();
+  const userId = user?._id || user?.id;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [clubData, applicationsData] = await Promise.all([
+        clubService.getClubById(clubId),
+        clubService.getClubApplications(clubId).catch(() => []),
+      ]);
+      setClub(clubData);
+      setApplications(Array.isArray(applicationsData) ? applicationsData : []);
+    } catch (err) {
+      setError(err.message || 'Failed to load club management');
+    } finally {
+      setLoading(false);
+    }
   }, [clubId]);
 
-  const fetchCurrentUser = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const isOwner = Boolean(club && userId && String(idOf(club.createdBy)) === String(userId));
+
+  const pendingApplications = useMemo(
+    () => applications.filter((application) => application.status === 'pending'),
+    [applications],
+  );
+
+  const members = club?.members || [];
+  const maxMembers = club?.maxMembers || null;
+  const spotsLeft = maxMembers ? Math.max(0, maxMembers - members.length) : null;
+
+  const handleApplication = async (application, action) => {
+    setActionId(application._id);
+    setError('');
+    setNotice('');
     try {
-      const response = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/users/profile`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setCurrentUser(response.data);
+      await clubService.handleApplicationAction(clubId, application._id, action);
+      setApplications((current) => current.filter((item) => item._id !== application._id));
+      setNotice(
+        `${fullName(application.userId)} was ${action === 'approve' ? 'approved' : 'rejected'}.`,
+      );
+      const fresh = await clubService.getClubById(clubId);
+      setClub(fresh);
     } catch (err) {
-      console.error('Failed to fetch user:', err);
-    }
-  };
-
-  const fetchClubDetails = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(
-        `${process.env.REACT_APP_BACKEND_URL}/clubs/${clubId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setClub(response.data);
-    } catch (error) {
-      setError('Failed to fetch club details');
-    }
-  };
-
-  const fetchApplications = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(
-        `${process.env.REACT_APP_BACKEND_URL}/clubs/${clubId}/applications`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setApplications(response.data);
-      setLoading(false);
-    } catch (error) {
-      setError('Failed to fetch applications');
-      setLoading(false);
-    }
-  };
-
-  const handleApplicationAction = async (applicationId, action) => {
-    setActionLoading(applicationId);
-    try {
-      const token = localStorage.getItem('token');
-      await axios.patch(
-        `${process.env.REACT_APP_BACKEND_URL}/clubs/${clubId}/applications/${applicationId}`,
-        { action },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      
-      // Refresh applications
-      await fetchApplications();
-      await fetchClubDetails();
-      
-      alert(`Application ${action === 'approve' ? 'approved' : 'rejected'} successfully!`);
-    } catch (error) {
-      alert(error.response?.data?.message || `Failed to ${action} application`);
+      setError(err.message || `Failed to ${action} application`);
     } finally {
-      setActionLoading(null);
+      setActionId(null);
     }
   };
 
-  const handleRemoveMember = async (memberId) => {
-    // Prevent creator from removing themselves
-    if (currentUser && memberId === currentUser.id) {
-      alert('You cannot remove yourself as the club creator.');
-      return;
-    }
-
-    if (!window.confirm('Are you sure you want to remove this member?')) {
-      return;
-    }
-
-    setRemoveLoading(memberId);
+  const handleRemoveMember = async () => {
+    if (!removeTarget) return;
+    setRemoving(true);
+    setError('');
+    setNotice('');
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(
-        `${process.env.REACT_APP_BACKEND_URL}/clubs/${clubId}/members/${memberId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      await clubService.removeMember(clubId, idOf(removeTarget));
+      setClub((current) =>
+        current
+          ? {
+              ...current,
+              members: (current.members || []).filter(
+                (member) => String(idOf(member)) !== String(idOf(removeTarget)),
+              ),
+            }
+          : current,
       );
-      
-      // Refresh club data
-      await fetchClubDetails();
-      
-      alert('Member removed successfully!');
-    } catch (error) {
-      alert(error.response?.data?.message || 'Failed to remove member');
+      setNotice(`${fullName(removeTarget)} was removed from the club.`);
+      setRemoveTarget(null);
+    } catch (err) {
+      setError(err.message || 'Failed to remove member');
     } finally {
-      setRemoveLoading(null);
+      setRemoving(false);
     }
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center">
-        <div className="text-gray-900 text-xl">Loading club management...</div>
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   if (!club) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Club not found</h2>
-          <Link to="/my-clubs" className="text-purple-600 hover:text-purple-700">
-            Return to My Clubs
-          </Link>
+      <>
+        <PageHeader eyebrow="Manage" title="Manage club" />
+        <div className="mt-6">
+          <Alert variant="error" title="We could not load this club">
+            {error || 'The club may have been removed.'}
+          </Alert>
+          <div className="mt-4">
+            <ButtonLink to="/my-clubs" variant="secondary" icon={ArrowLeftIcon}>
+              Back to my clubs
+            </ButtonLink>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
-  const pendingApplications = applications.filter(app => app.status === 'pending');
-  const approvedApplications = applications.filter(app => app.status === 'approved');
+  if (!isOwner) {
+    return (
+      <>
+        <PageHeader eyebrow="Manage" title={club.name} />
+        <div className="mt-6">
+          <Alert variant="warning" title="You do not have access to this page">
+            Only the club owner can manage members and applications.
+          </Alert>
+          <div className="mt-4">
+            <ButtonLink to={`/clubs/${clubId}`} icon={ArrowLeftIcon}>
+              Back to club
+            </ButtonLink>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
-      {/* Navigation */}
-      <nav className="bg-purple-600 border-b border-purple-700 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link to="/dashboard" className="text-white text-xl font-bold">
-              University Clubs
-            </Link>
-            <div className="flex items-center space-x-4">
-              <Link to="/my-clubs" className="text-white hover:text-purple-100 transition-colors">
-                My Clubs
-              </Link>
-              <Link to="/dashboard" className="text-white hover:text-purple-100 transition-colors">
-                Dashboard
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <>
+      <PageHeader
+        eyebrow="Manage"
+        title={club.name}
+        description="Review applications, keep the member list tidy and jump into club operations."
+        actions={
+          <>
+            <ButtonLink to={`/clubs/${clubId}`} variant="secondary" icon={ArrowLeftIcon}>
+              Club page
+            </ButtonLink>
+            <ButtonLink to={`/club-events/${clubId}`} icon={CalendarDaysIcon}>
+              Events
+            </ButtonLink>
+          </>
+        }
+      />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-600 rounded-full mb-4">
-            <CogIcon className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Manage Club</h1>
-          <h2 className="text-2xl text-purple-600 mb-4">{club.name}</h2>
-        </div>
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Members</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">{members.length}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Pending applications</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">
+            {pendingApplications.length}
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Capacity</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">
+            {maxMembers || 'Unlimited'}
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium text-ink-500 dark:text-ink-400">Spots left</p>
+          <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-white">
+            {spotsLeft === null ? '∞' : spotsLeft}
+          </p>
+        </Card>
+      </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-red-800">{error}</p>
-          </div>
-        )}
+      {error ? (
+        <Alert
+          variant="error"
+          className="mt-4"
+          action={
+            <button type="button" onClick={load} className="font-semibold underline underline-offset-2">
+              Retry
+            </button>
+          }
+        >
+          {error}
+        </Alert>
+      ) : null}
+      {notice ? (
+        <Alert variant="success" className="mt-4">
+          {notice}
+        </Alert>
+      ) : null}
 
-        {/* Club Overview */}
-        <div className="bg-white rounded-3xl p-6 mb-8 border border-gray-200 shadow-lg">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">Club Overview</h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-purple-600 mb-2">
-                {club.members?.length || 0}
-              </div>
-              <div className="text-gray-600">Current Members</div>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-yellow-600 mb-2">
-                {pendingApplications.length}
-              </div>
-              <div className="text-gray-600">Pending Applications</div>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-green-600 mb-2">
-                {club.maxMembers || '∞'}
-              </div>
-              <div className="text-gray-600">Max Members</div>
-            </div>
-            <div className="text-center">
-              <Link 
-                to={`/clubs/${clubId}/manage-payments`}
-                className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg transition-colors inline-flex items-center justify-center space-x-2 shadow"
-              >
-                <CurrencyDollarIcon className="w-5 h-5" />
-                <span>Manage Payments</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        {/* Club Details */}
-        <div className="bg-white rounded-3xl p-6 mb-8 border border-gray-200 shadow-lg">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">Club Details</h3>
-          <div className="space-y-4">
-            <div>
-              <h4 className="text-gray-900 font-semibold mb-2">Description</h4>
-              <p className="text-gray-700">{club.description}</p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <h4 className="text-gray-900 font-semibold mb-2">Category</h4>
-                <span className="px-3 py-1 bg-purple-50 border border-purple-200 rounded-full text-purple-900 text-sm">
-                  {club.category}
-                </span>
-              </div>
-              
-              {club.location && (
-                <div>
-                  <h4 className="text-gray-900 font-semibold mb-2">Location</h4>
-                  <div className="flex items-center text-gray-700">
-                    <MapPinIcon className="w-4 h-4 mr-2" />
-                    {club.location}
-                  </div>
-                </div>
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Card>
+            <CardHeader
+              title={`Members (${members.length})`}
+              description="Everyone who has been approved to join."
+            />
+            <CardBody>
+              {members.length === 0 ? (
+                <EmptyState
+                  icon={UserGroupIcon}
+                  title="No members yet"
+                  description="Approve a pending application and the member will appear here."
+                />
+              ) : (
+                <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+                  {members.map((member) => {
+                    const isCreator = String(idOf(member)) === String(idOf(club.createdBy));
+                    const isSelf = String(idOf(member)) === String(userId);
+                    return (
+                      <li key={idOf(member)} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+                        <Avatar
+                          name={fullName(member)}
+                          src={member.profilePicture}
+                          size="md"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-ink-900 dark:text-white">
+                            {fullName(member)}
+                            {isSelf ? (
+                              <span className="ml-2 text-xs font-normal text-ink-400">(you)</span>
+                            ) : null}
+                          </p>
+                          <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
+                            {isCreator ? 'Club owner' : 'Member'}
+                          </p>
+                        </div>
+                        {isCreator ? (
+                          <Badge variant="brand">Owner</Badge>
+                        ) : (
+                          <Button
+                            variant="danger-soft"
+                            size="xs"
+                            icon={UserMinusIcon}
+                            onClick={() => setRemoveTarget(member)}
+                          >
+                            Remove
+                          </Button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
-              
-              {club.meetingTime && (
-                <div>
-                  <h4 className="text-gray-900 font-semibold mb-2">Meeting Time</h4>
-                  <div className="flex items-center text-gray-700">
-                    <CalendarIcon className="w-4 h-4 mr-2" />
-                    {club.meetingTime}
-                  </div>
-                </div>
-              )}
-            </div>
+            </CardBody>
+          </Card>
 
-            {club.tags && club.tags.length > 0 && (
-              <div>
-                <h4 className="text-gray-900 font-semibold mb-2">Tags</h4>
-                <div className="flex flex-wrap gap-2">
-                  {club.tags.map((tag, index) => (
-                    <span
-                      key={index}
-                      className="px-2 py-1 bg-purple-50 border border-purple-200 rounded text-purple-900 text-sm"
+          <Card>
+            <CardHeader
+              title={`Pending applications (${pendingApplications.length})`}
+              description="Approve to add the student as a member, or reject to decline."
+            />
+            <CardBody>
+              {pendingApplications.length === 0 ? (
+                <EmptyState
+                  icon={ClockIcon}
+                  title="No pending applications"
+                  description="New applications will show up here for review."
+                />
+              ) : (
+                <ul className="space-y-3">
+                  {pendingApplications.map((application) => (
+                    <li
+                      key={application._id}
+                      className="rounded-[10px] border border-ink-200 p-4 dark:border-ink-800"
                     >
+                      <div className="flex flex-wrap items-start gap-3">
+                        <Avatar
+                          name={fullName(application.userId)}
+                          src={application.userId?.profilePicture}
+                          size="md"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-ink-900 dark:text-white">
+                            {fullName(application.userId)}
+                          </p>
+                          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-500 dark:text-ink-400">
+                            <EnvelopeIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            <span className="truncate">
+                              {application.userId?.email || 'No email available'}
+                            </span>
+                          </p>
+                          <p className="mt-0.5 text-xs text-ink-400 dark:text-ink-500">
+                            Applied {formatDate(application.appliedAt)}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            icon={CheckCircleIcon}
+                            loading={actionId === application._id}
+                            onClick={() => handleApplication(application, 'approve')}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            variant="danger-soft"
+                            size="sm"
+                            icon={XCircleIcon}
+                            disabled={actionId === application._id}
+                            onClick={() => handleApplication(application, 'reject')}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardBody>
+          </Card>
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader
+              title="Club details"
+              action={<Cog6ToothIcon className="h-5 w-5 text-ink-400" aria-hidden="true" />}
+            />
+            <CardBody className="space-y-4 text-sm">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-ink-400">About</p>
+                <p className="mt-1 text-ink-700 dark:text-ink-200">
+                  {club.description || 'No description provided yet.'}
+                </p>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-ink-500 dark:text-ink-400">Category</span>
+                <Badge variant="brand">{club.category || 'General'}</Badge>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-ink-500 dark:text-ink-400">Status</span>
+                <Badge variant={club.status === 'approved' ? 'success' : 'warning'}>
+                  {club.status || 'unknown'}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-ink-500 dark:text-ink-400">Created</span>
+                <span className="text-ink-700 dark:text-ink-200">{formatDate(club.createdAt)}</span>
+              </div>
+              {club.location ? (
+                <p className="flex items-start gap-2 text-ink-600 dark:text-ink-300">
+                  <MapPinIcon className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+                  {club.location}
+                </p>
+              ) : null}
+              {club.meetingTime ? (
+                <p className="flex items-start gap-2 text-ink-600 dark:text-ink-300">
+                  <CalendarDaysIcon className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" aria-hidden="true" />
+                  {club.meetingTime}
+                </p>
+              ) : null}
+              {club.tags?.length ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {club.tags.map((tag) => (
+                    <Badge key={tag} variant="neutral">
                       {tag}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
-              </div>
-            )}
-          </div>
-        </div>
+              ) : null}
+            </CardBody>
+          </Card>
 
-        {/* Pending Applications */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 mb-8 border border-white/20">
-          <h3 className="text-xl font-bold text-white mb-6">
-            Pending Applications ({pendingApplications.length})
-          </h3>
-          
-          {pendingApplications.length === 0 ? (
-            <div className="text-center py-8">
-              <ClockIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-300">No pending applications</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {pendingApplications.map((application) => (
-                <div
-                  key={application._id}
-                  className="bg-white/5 rounded-xl p-4 border border-white/10"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h4 className="text-white font-semibold">
-                        {application.userId ? 
-                          `${application.userId.firstName} ${application.userId.lastName}` : 
-                          'Unknown User'
-                        }
-                      </h4>
-                      <div className="flex items-center text-gray-700 text-sm mt-1">
-                        <EnvelopeIcon className="w-4 h-4 mr-1" />
-                        {application.userId?.email || 'No email available'}
-                      </div>
-                      <div className="text-gray-600 text-sm mt-1">
-                        Applied: {new Date(application.appliedAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                    
-                    <div className="flex gap-2 ml-4">
-                      <button
-                        onClick={() => handleApplicationAction(application._id, 'approve')}
-                        disabled={actionLoading === application._id}
-                        className="flex items-center px-4 py-2 bg-green-50 border border-green-200 text-green-800 rounded-lg hover:bg-green-100 transition-colors disabled:opacity-50 shadow"
-                      >
-                        <CheckCircleIcon className="w-4 h-4 mr-1" />
-                        {actionLoading === application._id ? 'Processing...' : 'Approve'}
-                      </button>
-                      <button
-                        onClick={() => handleApplicationAction(application._id, 'reject')}
-                        disabled={actionLoading === application._id}
-                        className="flex items-center px-4 py-2 bg-red-50 border border-red-200 text-red-800 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50 shadow"
-                      >
-                        <XCircleIcon className="w-4 h-4 mr-1" />
-                        {actionLoading === application._id ? 'Processing...' : 'Reject'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+          <Card>
+            <CardHeader title="Operations" />
+            <CardBody className="space-y-2">
+              <ButtonLink to={`/club-events/${clubId}`} variant="secondary" fullWidth icon={CalendarDaysIcon}>
+                Manage events
+              </ButtonLink>
+              <ButtonLink
+                to={`/clubs/${clubId}/manage-payments`}
+                variant="secondary"
+                fullWidth
+                icon={CurrencyDollarIcon}
+              >
+                Manage payments
+              </ButtonLink>
+              <ButtonLink
+                to={`/clubs/${clubId}/payment-history`}
+                variant="secondary"
+                fullWidth
+                icon={CurrencyDollarIcon}
+              >
+                Payment history
+              </ButtonLink>
+            </CardBody>
+          </Card>
 
-        {/* Current Members */}
-        <div className="bg-white rounded-3xl p-6 border border-gray-200 shadow-lg">
-          <h3 className="text-xl font-bold text-gray-900 mb-6">
-            Current Members ({club.members?.length || 0})
-          </h3>
-          
-          {!club.members || club.members.length === 0 ? (
-            <div className="text-center py-8">
-              <UserGroupIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No approved members yet</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {club.members.map((member) => (
-                <div
-                  key={member._id}
-                  className="bg-gray-50 rounded-xl p-4 border border-gray-200"
-                >
-                  <h4 className="text-gray-900 font-semibold mb-1">
-                    {member.firstName && member.lastName ? 
-                      `${member.firstName} ${member.lastName}` : 
-                      'Unknown User'
-                    }
-                  </h4>
-                  <div className="flex items-center text-gray-700 text-sm mb-2">
-                    <EnvelopeIcon className="w-4 h-4 mr-1" />
-                    {member.email || 'No email available'}
-                  </div>
-                  <div className="text-gray-600 text-sm mb-3">
-                    Member since: {new Date(member.createdAt || Date.now()).toLocaleDateString()}
-                  </div>
-                  {currentUser && member._id !== currentUser.id ? (
-                    <button
-                      onClick={() => handleRemoveMember(member._id)}
-                      disabled={removeLoading === member._id}
-                      className="w-full bg-red-50 hover:bg-red-100 border border-red-200 text-red-800 px-3 py-2 rounded-lg transition-all duration-200 text-sm disabled:opacity-50 shadow"
-                    >
-                      {removeLoading === member._id ? 'Removing...' : 'Remove Member'}
-                    </button>
-                  ) : (
-                    <div className="w-full bg-purple-50 border border-purple-200 text-purple-900 px-3 py-2 rounded-lg text-sm text-center">
-                      Club Creator
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <Alert variant="info" title="Member privacy">
+            Member emails are hidden across the app. Use announcements and club events to reach
+            everyone.
+          </Alert>
         </div>
       </div>
-    </div>
+
+      {removeTarget ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="remove-member-title"
+        >
+          <div className="w-full max-w-md rounded-card border border-ink-200 bg-white p-6 shadow-pop dark:border-ink-800 dark:bg-ink-900">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-danger-50 text-danger-600 dark:bg-danger-600/15 dark:text-rose-400">
+              <UserMinusIcon className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <h2
+              id="remove-member-title"
+              className="mt-4 text-lg font-semibold text-ink-900 dark:text-white"
+            >
+              Remove {fullName(removeTarget)}?
+            </h2>
+            <p className="mt-1.5 text-sm text-ink-500 dark:text-ink-400">
+              They will lose access to club events and can re-apply later. This does not delete their
+              account.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setRemoveTarget(null)} disabled={removing}>
+                Cancel
+              </Button>
+              <Button variant="danger" loading={removing} onClick={handleRemoveMember}>
+                Remove member
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 };
 

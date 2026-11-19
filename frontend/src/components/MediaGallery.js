@@ -18,11 +18,9 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Divider,
   CircularProgress,
   Fade,
   Zoom,
-  Stack,
   Fab,
   Snackbar,
   Alert,
@@ -31,12 +29,10 @@ import {
   DialogContent,
   DialogActions,
   Container,
-  LinearProgress,
-  Badge,
   Avatar,
   Pagination
 } from '@mui/material';
-import { PhotoLibrary, VideoLibrary, Description, InsertDriveFile, Visibility, Download, MoreVert, ViewModule, ViewList, Add, Search, Close, Delete, FilterList, CloudUpload, Folder, Image, PlayCircle } from '@mui/icons-material';
+import { PhotoLibrary, VideoLibrary, Description, InsertDriveFile, Visibility, Download, ViewModule, ViewList, Add, Search, Close, Delete, FilterList, CloudUpload, Folder, Image, PlayCircle } from '@mui/icons-material';
 import { format } from 'date-fns';
 import fileService from '../services/fileService';
 import FileUpload from './FileUpload';
@@ -153,8 +149,6 @@ const MediaGallery = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState(null);
-  const [contextFile, setContextFile] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
   const [stats, setStats] = useState(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -233,23 +227,10 @@ const MediaGallery = () => {
     setPreviewOpen(true);
   };
 
-  const handleMenuOpen = (event, file) => {
-    event.stopPropagation();
-    setMenuAnchor(event.currentTarget);
-    setContextFile(file);
-  };
-
-  const handleMenuClose = () => {
-    setMenuAnchor(null);
-    setContextFile(null);
-  };
-
   const handleDownload = async (file) => {
     try {
-      console.log('Downloading file:', file); // Debug log
       const filename = file.originalname || file.originalName || file.name || 'file';
       const fileId = file.id || file._id;
-      console.log('File ID:', fileId, 'Filename:', filename); // Debug log
       await fileService.downloadFile(fileId, filename);
       setSnackbar({
         open: true,
@@ -264,22 +245,17 @@ const MediaGallery = () => {
         severity: 'error',
       });
     }
-    handleMenuClose();
   };
 
   const handleDeleteClick = (file) => {
-    console.log('Delete button clicked for file:', file);
     setFileToDelete(file);
     setDeleteConfirmOpen(true);
-    handleMenuClose();
   };
 
   const handleDeleteConfirm = async () => {
     if (!fileToDelete) return;
 
     try {
-      console.log('Attempting to delete file:', fileToDelete.originalName);
-      
       const fileId = fileToDelete._id || fileToDelete.id;
       if (!fileId) {
         throw new Error('File ID is missing');
@@ -399,15 +375,6 @@ const MediaGallery = () => {
                   }}
                 >
                   <Download />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="More">
-                <IconButton 
-                  color="inherit" 
-                  sx={{ color: 'white' }}
-                  onClick={(e) => handleMenuOpen(e, file)}
-                >
-                  <MoreVert />
                 </IconButton>
               </Tooltip>
             </Box>

@@ -1,49 +1,12 @@
-import axios from 'axios';
-
-const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 
-  (process.env.NODE_ENV === 'production' 
-    ? 'https://university-club-management-system.onrender.com'
-    : 'http://localhost:8000');
-
-// Create axios instance with default config
-const api = axios.create({
-  baseURL: API_BASE_URL,
-});
-
-// Add auth token to requests if available
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// Response interceptor to handle authentication errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // Only logout for authentication errors (invalid/expired token)
-    // Don't logout for authorization errors (403 Forbidden)
-    if (error.response?.status === 401 && 
-        (error.response?.data?.message?.includes('Unauthorized') || 
-         error.response?.data?.message?.includes('token') ||
-         error.response?.data?.message?.includes('Invalid token'))) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
+import api from './api';
 
 export const userService = {
   // Authentication methods (existing)
   register: async (userData) => {
     try {
       const response = await api.post('/auth/register', userData);
-      if (response.data.access_token) {
-        localStorage.setItem('token', response.data.access_token);
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
       }
       return response.data;
@@ -55,8 +18,8 @@ export const userService = {
   login: async (credentials) => {
     try {
       const response = await api.post('/auth/login', credentials);
-      if (response.data.access_token) {
-        localStorage.setItem('token', response.data.access_token);
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
       }
       return response.data;
@@ -73,12 +36,9 @@ export const userService = {
 
   getUserActivity: async (limit = 20) => {
     try {
-      console.log('UserService: Getting user activity, limit:', limit);
-      const response = await api.get(`/users/activity?limit=${limit}`);
-      console.log('UserService: Activity response:', response.data);
+      const response = await api.get(`/users/activity`, { params: { limit } });
       return response.data;
-    } catch (error) {
-      console.error('UserService: Error getting activity:', error);
+    } catch {
       return []; // Return empty array if activity endpoint fails
     }
   },
@@ -93,7 +53,7 @@ export const userService = {
       const user = response.data;
       localStorage.setItem('user', JSON.stringify(user));
       return user;
-    } catch (error) {
+    } catch {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       throw new Error('Please log in to continue');
@@ -121,120 +81,53 @@ export const userService = {
 
   // New User Management methods
   getUserProfile: async () => {
-    try {
-      console.log('UserService: Getting user profile');
-      const response = await api.get('/users/profile');
-      console.log('UserService: Profile response:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('UserService: Error getting profile:', error);
-      throw error;
-    }
+    const response = await api.get('/users/profile');
+    return response.data;
   },
 
   updateUserProfile: async (profileData) => {
-    try {
-      console.log('UserService: Updating user profile:', profileData);
-      const response = await api.put('/users/profile', profileData);
-      console.log('UserService: Profile update response:', response.data);
-      // Update localStorage
-      localStorage.setItem('user', JSON.stringify(response.data));
-      return response.data;
-    } catch (error) {
-      console.error('UserService: Error updating profile:', error);
-      throw error;
-    }
+    const response = await api.put('/users/profile', profileData);
+    localStorage.setItem('user', JSON.stringify(response.data));
+    return response.data;
   },
 
   uploadProfilePicture: async (formData) => {
-    try {
-      console.log('UserService: Uploading profile picture');
-      const response = await api.post('/users/profile/upload-picture', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      console.log('UserService: Profile picture upload response:', response.data);
-      // Update localStorage
-      localStorage.setItem('user', JSON.stringify(response.data));
-      return response.data;
-    } catch (error) {
-      console.error('UserService: Error uploading profile picture:', error);
-      throw error;
-    }
+    const response = await api.post('/users/profile/upload-picture', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    localStorage.setItem('user', JSON.stringify(response.data));
+    return response.data;
   },
 
   updateUserSettings: async (settingsData) => {
-    try {
-      console.log('UserService: Updating user settings:', settingsData);
-      const response = await api.put('/users/settings', settingsData);
-      console.log('UserService: Settings update response:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('UserService: Error updating settings:', error);
-      throw error;
-    }
+    const response = await api.put('/users/settings', settingsData);
+    return response.data;
   },
 
   changePassword: async (passwordData) => {
-    try {
-      console.log('UserService: Changing password');
-      const response = await api.post('/users/change-password', passwordData);
-      console.log('UserService: Password change response:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('UserService: Error changing password:', error);
-      throw error;
-    }
+    const response = await api.post('/users/change-password', passwordData);
+    return response.data;
   },
 
   deactivateAccount: async () => {
-    try {
-      console.log('UserService: Deactivating account');
-      const response = await api.post('/users/deactivate');
-      console.log('UserService: Deactivation response:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('UserService: Error deactivating account:', error);
-      throw error;
-    }
+    const response = await api.post('/users/deactivate');
+    return response.data;
   },
 
   getAllUsers: async (page = 1, limit = 10) => {
-    try {
-      console.log('UserService: Getting all users, page:', page, 'limit:', limit);
-      const response = await api.get(`/users/all?page=${page}&limit=${limit}`);
-      console.log('UserService: All users response:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('UserService: Error getting all users:', error);
-      throw error;
-    }
+    const response = await api.get('/users/all', { params: { page, limit } });
+    return response.data;
   },
 
   getUserById: async (userId) => {
-    try {
-      console.log('UserService: Getting user by ID:', userId);
-      const response = await api.get(`/users/${userId}`);
-      console.log('UserService: User by ID response:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('UserService: Error getting user by ID:', error);
-      throw error;
-    }
+    const response = await api.get(`/users/${userId}`);
+    return response.data;
   },
 
   logActivity: async (userId, activityData) => {
-    try {
-      console.log('UserService: Logging activity for user:', userId, activityData);
-      const response = await api.post(`/users/${userId}/activity`, activityData);
-      console.log('UserService: Log activity response:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('UserService: Error logging activity:', error);
-      throw error;
-    }
-  }
+    const response = await api.post(`/users/${userId}/activity`, activityData);
+    return response.data;
+  },
 };
 
 export default userService;

@@ -48,7 +48,7 @@ export class AnnouncementService {
     });
 
     const savedAnnouncement = await announcement.save();
-    
+
     return await this.announcementModel
       .findById(savedAnnouncement._id)
       .populate('createdBy', 'firstName lastName email')
@@ -184,7 +184,7 @@ export class AnnouncementService {
 
   async updateAnnouncement(announcementId: string, updateAnnouncementDto: UpdateAnnouncementDto, userId: string) {
     const announcement = await this.announcementModel.findById(announcementId);
-    
+
     if (!announcement) {
       throw new NotFoundException('Announcement not found');
     }
@@ -205,7 +205,7 @@ export class AnnouncementService {
 
   async deleteAnnouncement(announcementId: string, userId: string) {
     const announcement = await this.announcementModel.findById(announcementId);
-    
+
     if (!announcement) {
       throw new NotFoundException('Announcement not found');
     }
@@ -228,7 +228,7 @@ export class AnnouncementService {
 
   async toggleLike(announcementId: string, userId: string) {
     const announcement = await this.announcementModel.findById(announcementId);
-    
+
     if (!announcement) {
       throw new NotFoundException('Announcement not found');
     }
@@ -256,9 +256,9 @@ export class AnnouncementService {
   }
 
   async getAnnouncementStats(userId: string) {
-    const userAnnouncements = await this.announcementModel.countDocuments({ 
-      createdBy: userId, 
-      isActive: true 
+    const userAnnouncements = await this.announcementModel.countDocuments({
+      createdBy: userId,
+      isActive: true
     });
 
     const totalLikes = await this.announcementModel.aggregate([

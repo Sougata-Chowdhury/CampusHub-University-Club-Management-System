@@ -33,10 +33,10 @@ export class PaymentService {
 
     // Check if user is already registered for the event
     const userObjectId = new Types.ObjectId(userId);
-    const isAlreadyRegistered = event.attendees.some(attendee => 
+    const isAlreadyRegistered = event.attendees.some(attendee =>
       attendee.equals(userObjectId)
     );
-    
+
     if (isAlreadyRegistered) {
       throw new BadRequestException('You are already registered for this event');
     }
@@ -75,15 +75,8 @@ export class PaymentService {
     });
 
     const savedPayment = await payment.save();
-    
-    console.log('Payment created successfully:', {
-      paymentId: savedPayment._id,
-      userId: savedPayment.userId,
-      eventId: savedPayment.eventId,
-      clubId: savedPayment.clubId,
-      status: savedPayment.status
-    });
-    
+
+
     return await this.paymentModel
       .findById(savedPayment._id)
       .populate('userId', 'firstName lastName email')
@@ -129,15 +122,6 @@ export class PaymentService {
     const isCreator = club.createdBy.equals(userObjectId);
     const isMember = club.members.some(memberId => memberId.equals(userObjectId));
 
-    console.log('Club payment permissions check:', {
-      clubId,
-      userId,
-      clubName: club.name,
-      isCreator,
-      isMember,
-      clubCreatedBy: club.createdBy,
-      clubMembers: club.members
-    });
 
     if (!isCreator && !isMember) {
       throw new ForbiddenException('Only club creators and members can view payments');
@@ -147,16 +131,8 @@ export class PaymentService {
 
     // Debug: Check all payments in the database
     const allPayments = await this.paymentModel.find({}).lean();
-    console.log('All payments in database:', allPayments.map(p => ({
-      id: p._id,
-      clubId: p.clubId,
-      userId: p.userId,
-      eventId: p.eventId,
-      status: p.status
-    })));
 
     const clubPaymentQuery = { clubId: new Types.ObjectId(clubId) };
-    console.log('Searching for payments with query:', clubPaymentQuery);
 
     // Try both ObjectId and string formats for clubId
     const rawPayments = await this.paymentModel
@@ -173,13 +149,12 @@ export class PaymentService {
       .limit(limit)
       .lean();
 
-    console.log('Raw payments found:', rawPayments.length);
 
     // Manually populate event data to handle missing events
     const payments: any[] = [];
     for (const payment of rawPayments) {
       const eventData = await this.eventModel.findById(payment.eventId).lean();
-      
+
       // Create payment object with event data or fallback
       const enrichedPayment = {
         ...payment,
@@ -201,11 +176,10 @@ export class PaymentService {
           currency: payment.currency
         }
       };
-      
+
       payments.push(enrichedPayment);
-      
-      console.log(`Payment ${payment._id}: Event ${payment.eventId} ${eventData ? 'found' : 'missing'}`);
-    }
+
+          }
 
     const total = await this.paymentModel.countDocuments({
       $or: [
@@ -214,12 +188,6 @@ export class PaymentService {
       ]
     });
 
-    console.log('getClubPayments results:', {
-      clubId,
-      userId,
-      paymentsFound: payments.length,
-      total
-    });
 
     return {
       payments,
@@ -274,7 +242,7 @@ export class PaymentService {
     const payments: any[] = [];
     for (const payment of rawPayments) {
       const eventData = await this.eventModel.findById(payment.eventId).lean();
-      
+
       // Create payment object with event data or fallback
       const enrichedPayment = {
         ...payment,
@@ -296,7 +264,7 @@ export class PaymentService {
           currency: payment.currency
         }
       };
-      
+
       payments.push(enrichedPayment);
     }
 
@@ -335,7 +303,7 @@ export class PaymentService {
     if (!club) {
       throw new NotFoundException('Club not found');
     }
-    
+
     const userObjectId = new Types.ObjectId(userId);
     const isCreator = club.createdBy.equals(userObjectId);
     const isMember = club.members.some(memberId => memberId.equals(userObjectId));
@@ -385,11 +353,11 @@ export class PaymentService {
     payment.status = status;
     payment.approvedBy = new Types.ObjectId(userId);
     payment.approvedAt = new Date();
-    
+
     if (rejectionReason) {
       payment.rejectionReason = rejectionReason;
     }
-    
+
     if (notes) {
       payment.notes = notes;
     }
@@ -401,21 +369,19 @@ export class PaymentService {
       const event = await this.eventModel.findById(payment.eventId);
       if (event) {
         // Proper ObjectId comparison to check if user is already registered
-        const userObjectId = payment.userId instanceof Types.ObjectId 
-          ? payment.userId 
+        const userObjectId = payment.userId instanceof Types.ObjectId
+          ? payment.userId
           : new Types.ObjectId(payment.userId);
-        
-        const isAlreadyRegistered = event.attendees.some(attendee => 
+
+        const isAlreadyRegistered = event.attendees.some(attendee =>
           attendee.equals(userObjectId)
         );
-        
+
         if (!isAlreadyRegistered) {
           event.attendees.push(userObjectId);
           await event.save();
-          console.log(`User ${userObjectId} added to event ${event._id} attendees after payment approval`);
-        } else {
-          console.log(`User ${userObjectId} already registered for event ${event._id}`);
-        }
+                  } else {
+                  }
       }
 
       // Create notification for payment approval
@@ -463,7 +429,7 @@ export class PaymentService {
     // Check if user can view this payment
     const userObjectId = new Types.ObjectId(userId);
     const isOwner = payment.userId._id.equals(userObjectId);
-    
+
     if (!isOwner) {
       // Check if user is club creator or member
       const club = await this.clubModel.findById(payment.clubId);
@@ -473,7 +439,7 @@ export class PaymentService {
 
       const isCreator = club.createdBy.equals(userObjectId);
       const isMember = club.members.some(memberId => memberId.equals(userObjectId));
-      
+
       if (!isCreator && !isMember) {
         throw new ForbiddenException('You do not have permission to view this payment');
       }
@@ -512,13 +478,13 @@ export class PaymentService {
 
     // User's payment stats
     const totalPayments = await this.paymentModel.countDocuments({ userId: userObjectId });
-    const approvedPayments = await this.paymentModel.countDocuments({ 
-      userId: userObjectId, 
-      status: PaymentStatus.APPROVED 
+    const approvedPayments = await this.paymentModel.countDocuments({
+      userId: userObjectId,
+      status: PaymentStatus.APPROVED
     });
-    const pendingPayments = await this.paymentModel.countDocuments({ 
-      userId: userObjectId, 
-      status: PaymentStatus.PENDING 
+    const pendingPayments = await this.paymentModel.countDocuments({
+      userId: userObjectId,
+      status: PaymentStatus.PENDING
     });
 
     const totalSpent = await this.paymentModel.aggregate([

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Box,
   Paper,
@@ -14,14 +14,12 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
   Alert,
   Snackbar,
-  CircularProgress,
 } from '@mui/material';
 import fileService from '../services/fileService';
 
@@ -109,7 +107,6 @@ const FileUpload = ({ onUploadComplete, acceptedFileTypes, maxFiles = 10, maxFil
         throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
       }
 
-      const result = await response.json();
     setSnackbar({
       open: true,
       message: '✅ Files uploaded successfully!',
@@ -147,10 +144,6 @@ const FileUpload = ({ onUploadComplete, acceptedFileTypes, maxFiles = 10, maxFil
   }
 };
 // ...existing code...
-
-  const openPreview = (file) => {
-    setPreviewFile(file);
-  };
 
   const closePreview = () => {
     setPreviewFile(null);

@@ -12,8 +12,7 @@ export class UserService {
   ) {}
 
   async getUserProfile(userId: string): Promise<UserResponseDto> {
-    console.log('UserService: Getting profile for user:', userId);
-    
+
     const user = await this.userModel.findById(userId).select('-password').lean();
     if (!user) {
       throw new NotFoundException('User not found');
@@ -49,13 +48,12 @@ export class UserService {
   }
 
   async updateUserProfile(userId: string, updateDto: UpdateUserProfileDto): Promise<UserResponseDto> {
-    console.log('UserService: Updating profile for user:', userId, updateDto);
 
     // Check if email is being changed and if it's already taken
     if (updateDto.email) {
-      const existingUser = await this.userModel.findOne({ 
-        email: updateDto.email, 
-        _id: { $ne: userId } 
+      const existingUser = await this.userModel.findOne({
+        email: updateDto.email,
+        _id: { $ne: userId }
       });
       if (existingUser) {
         throw new ConflictException('Email already in use');
@@ -83,12 +81,11 @@ export class UserService {
   }
 
   async updateUserSettings(userId: string, settingsDto: UpdateUserSettingsDto): Promise<UserResponseDto> {
-    console.log('UserService: Updating settings for user:', userId, settingsDto);
 
     const updatedUser = await this.userModel.findByIdAndUpdate(
       userId,
-      { 
-        $set: { 
+      {
+        $set: {
           'settings': {
             ...settingsDto
           }
@@ -112,7 +109,6 @@ export class UserService {
   }
 
   async changePassword(userId: string, changePasswordDto: ChangePasswordDto): Promise<{ message: string }> {
-    console.log('UserService: Changing password for user:', userId);
 
     const user = await this.userModel.findById(userId);
     if (!user) {
@@ -151,7 +147,6 @@ export class UserService {
   }
 
   async getUserActivity(userId: string, limit: number = 20): Promise<any[]> {
-    console.log('UserService: Getting activity for user:', userId);
 
     const user = await this.userModel.findById(userId).select('activityLog');
     if (!user) {
@@ -164,7 +159,6 @@ export class UserService {
   }
 
   async logUserActivity(userId: string, activityDto: UserActivityDto): Promise<void> {
-    console.log('UserService: Logging activity for user:', userId, activityDto);
 
     const activity = {
       ...activityDto,
@@ -183,7 +177,6 @@ export class UserService {
   }
 
   async deactivateUser(userId: string): Promise<{ message: string }> {
-    console.log('UserService: Deactivating user:', userId);
 
     const user = await this.userModel.findByIdAndUpdate(
       userId,
@@ -205,10 +198,9 @@ export class UserService {
   }
 
   async getAllUsers(page: number = 1, limit: number = 10): Promise<{users: UserResponseDto[], total: number, page: number, totalPages: number}> {
-    console.log('UserService: Getting all users, page:', page, 'limit:', limit);
 
     const skip = (page - 1) * limit;
-    
+
     const [users, total] = await Promise.all([
       this.userModel.find({ isActive: true })
         .select('-password -activityLog')
@@ -234,7 +226,7 @@ export class UserService {
   private async getUserStats(userId: string): Promise<any> {
     const { ObjectId } = require('mongoose').Types;
     const userObjectId = new ObjectId(userId);
-    
+
     // Get user's club memberships
     const clubsJoined = await this.userModel.aggregate([
       { $match: { _id: userObjectId } },
@@ -279,7 +271,7 @@ export class UserService {
 
   private async mapUserToResponseDto(user: any): Promise<UserResponseDto> {
     const stats = await this.getUserStats(user._id.toString());
-    
+
     return {
       id: user._id.toString(),
       firstName: user.firstName,
@@ -310,7 +302,7 @@ export class UserService {
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - date.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays < 30) {
       return `${diffDays} days`;
     } else if (diffDays < 365) {

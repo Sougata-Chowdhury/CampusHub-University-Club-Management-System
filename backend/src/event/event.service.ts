@@ -66,7 +66,7 @@ export class EventService {
       .find({ isActive: true })
       .populate('clubId', 'name description')
       .populate('createdBy', 'firstName lastName email')
-      .populate('attendees', '_id firstName lastName email')
+      .populate('attendees', '_id firstName lastName')
       .sort({ date: 1 });
   }
 
@@ -75,15 +75,15 @@ export class EventService {
       .find({ isActive: true })
       .populate('clubId', 'name description logoUrl')
       .populate('createdBy', 'firstName lastName email')
-      .populate('attendees', '_id firstName lastName email')
+      .populate('attendees', '_id firstName lastName')
       .sort({ date: 1 });
 
     const now = new Date();
-    
+
     return events.map(event => {
       const eventDate = new Date(event.date);
       const status = eventDate < now ? 'completed' : 'upcoming';
-      
+
       return {
         ...event.toObject(),
         status,
@@ -94,7 +94,7 @@ export class EventService {
 
   private getTimeUntilEvent(eventDate: Date, now: Date): string {
     const diffMs = eventDate.getTime() - now.getTime();
-    
+
     if (diffMs < 0) {
       // Event has passed
       const daysPassed = Math.floor(Math.abs(diffMs) / (1000 * 60 * 60 * 24));
@@ -102,11 +102,11 @@ export class EventService {
       if (daysPassed === 1) return '1 day ago';
       return `${daysPassed} days ago`;
     }
-    
+
     // Event is upcoming
     const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    
+
     if (days === 0) {
       if (hours === 0) return 'Starting soon';
       if (hours === 1) return 'In 1 hour';
@@ -121,21 +121,21 @@ export class EventService {
       .find({ clubId, isActive: true })
       .populate('clubId', 'name description')
       .populate('createdBy', 'firstName lastName email')
-      .populate('attendees', '_id firstName lastName email')
+      .populate('attendees', '_id firstName lastName')
       .sort({ date: 1 });
   }
 
   async getRegisteredEvents(userId: string) {
     const userObjectId = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
-    
+
     return this.eventModel
-      .find({ 
+      .find({
         attendees: userObjectId,
-        isActive: true 
+        isActive: true
       })
       .populate('clubId', 'name description logoUrl')
       .populate('createdBy', 'firstName lastName email')
-      .populate('attendees', '_id firstName lastName email')
+      .populate('attendees', '_id firstName lastName')
       .sort({ date: 1 });
   }
 
@@ -145,26 +145,18 @@ export class EventService {
     const ownedClubs = await this.clubModel.find({ createdBy: userObjectId }).select('_id');
     const clubIds = ownedClubs.map(club => club._id);
 
-    console.log('getUserEvents - userId:', userId);
-    console.log('getUserEvents - userObjectId:', userObjectId);
-    console.log('getUserEvents - ownedClubs:', ownedClubs.length);
-    console.log('getUserEvents - clubIds:', clubIds);
 
     // Let's check what events exist in the database
     const allEvents = await this.eventModel.find({ isActive: true });
-    console.log('getUserEvents - all active events:', allEvents.length);
-    if (allEvents.length > 0) {
-      console.log('getUserEvents - first event clubId:', allEvents[0].clubId);
-      console.log('getUserEvents - first event clubId type:', typeof allEvents[0].clubId);
-    }
+        if (allEvents.length > 0) {
+                }
 
     // Convert ObjectIds to strings for comparison since clubId in events might be stored as string
     const clubIdStrings = clubIds.map((id: any) => id.toString());
-    
-    console.log('getUserEvents - clubIdStrings:', clubIdStrings);
+
 
     const events = await this.eventModel
-      .find({ 
+      .find({
         $and: [
           { $or: [
             { clubId: { $in: clubIds } },           // Match ObjectIds
@@ -175,11 +167,10 @@ export class EventService {
       })
       .populate('clubId', 'name description')
       .populate('createdBy', 'firstName lastName email')
-      .populate('attendees', '_id firstName lastName email')
+      .populate('attendees', '_id firstName lastName')
       .sort({ date: 1 });
 
-    console.log('getUserEvents - events found:', events.length);
-    return events;
+        return events;
   }
 
   async getEventById(eventId: string) {
@@ -187,7 +178,7 @@ export class EventService {
       .findById(eventId)
       .populate('clubId', 'name description createdBy')
       .populate('createdBy', 'firstName lastName email')
-      .populate('attendees', '_id firstName lastName email');
+      .populate('attendees', '_id firstName lastName');
 
     if (!event) {
       throw new NotFoundException('Event not found');
@@ -198,7 +189,7 @@ export class EventService {
 
   async updateEvent(eventId: string, updateEventDto: UpdateEventDto, userId: string) {
     const event = await this.eventModel.findById(eventId).populate('clubId');
-    
+
     if (!event) {
       throw new NotFoundException('Event not found');
     }
@@ -225,7 +216,7 @@ export class EventService {
     }
 
     Object.assign(event, updateEventDto);
-    return await event.save().then(event => 
+    return await event.save().then(event =>
       event.populate([
         { path: 'clubId', select: 'name' },
         { path: 'createdBy', select: 'firstName lastName email' }
@@ -235,7 +226,7 @@ export class EventService {
 
   async deleteEvent(eventId: string, userId: string) {
     const event = await this.eventModel.findById(eventId);
-    
+
     if (!event) {
       throw new NotFoundException('Event not found');
     }
@@ -258,7 +249,7 @@ export class EventService {
 
   async joinEvent(eventId: string, userId: string) {
     const event = await this.eventModel.findById(eventId);
-    
+
     if (!event) {
       throw new NotFoundException('Event not found');
     }
@@ -272,10 +263,10 @@ export class EventService {
 
     // Proper ObjectId comparison to check if user is already registered
     const userObjectId = new Types.ObjectId(userId);
-    const isAlreadyRegistered = event.attendees.some(attendee => 
+    const isAlreadyRegistered = event.attendees.some(attendee =>
       attendee.equals(userObjectId)
     );
-    
+
     if (isAlreadyRegistered) {
       throw new ForbiddenException('You are already registered for this event');
     }
@@ -310,30 +301,30 @@ export class EventService {
       console.error('Failed to send event registration notification:', notificationError);
       // Don't fail the registration if notification fails
     }
-    
+
     return { message: 'Successfully registered for event' };
   }
 
   async leaveEvent(eventId: string, userId: string) {
     const event = await this.eventModel.findById(eventId);
-    
+
     if (!event) {
       throw new NotFoundException('Event not found');
     }
 
     // Proper ObjectId comparison to find the attendee
     const userObjectId = new Types.ObjectId(userId);
-    const attendeeIndex = event.attendees.findIndex(attendee => 
+    const attendeeIndex = event.attendees.findIndex(attendee =>
       attendee.equals(userObjectId)
     );
-    
+
     if (attendeeIndex === -1) {
       throw new ForbiddenException('You are not registered for this event');
     }
 
     event.attendees.splice(attendeeIndex, 1);
     await event.save();
-    
+
     return { message: 'Successfully unregistered from event' };
   }
 }

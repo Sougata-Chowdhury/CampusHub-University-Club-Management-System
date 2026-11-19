@@ -60,7 +60,7 @@ export class ReportService {
       try {
         const priorityText = priority >= 4 ? ' This report has been marked as high priority.' : '';
         await this.notificationService.createNotification(userId, {
-          title: '📝 Report Submitted Successfully',
+          title: 'ðŸ“ Report Submitted Successfully',
           message: `Your ${createReportDto.type} report for ${createReportDto.category.replace('_', ' ')} has been received and is being reviewed by our moderation team.${priorityText} We'll notify you of any updates.`,
           type: 'report_submitted',
           priority: priority >= 4 ? 'high' : 'info',
@@ -103,7 +103,7 @@ export class ReportService {
     if (queryDto.type) query.type = queryDto.type;
     if (queryDto.status) query.status = queryDto.status;
     if (queryDto.category) query.category = queryDto.category;
-    
+
     query.isDeleted = false;
 
     if (queryDto.search) {
@@ -194,7 +194,7 @@ export class ReportService {
 
   async updateReportStatus(reportId: string, updateDto: UpdateReportStatusDto, adminId: string): Promise<ReportResponseDto> {
     const report = await this.reportModel.findById(reportId);
-    
+
     if (!report) {
       throw new NotFoundException('Report not found');
     }
@@ -219,7 +219,7 @@ export class ReportService {
     // Send detailed notification to user about status change
     try {
       let notificationData;
-      
+
       switch (updateDto.status) {
         case 'under_review':
           notificationData = {
@@ -234,7 +234,7 @@ export class ReportService {
             channels: { email: false, push: true, inApp: true }
           };
           break;
-          
+
         case 'action_taken':
           notificationData = {
             title: 'Action Taken on Your Report',
@@ -248,7 +248,7 @@ export class ReportService {
             channels: { email: true, push: true, inApp: true }
           };
           break;
-          
+
         case 'dismissed':
           notificationData = {
             title: 'Report Update',
@@ -262,7 +262,7 @@ export class ReportService {
             channels: { email: false, push: true, inApp: true }
           };
           break;
-          
+
         case 'resolved':
           notificationData = {
             title: 'Report Resolved',
@@ -276,7 +276,7 @@ export class ReportService {
             channels: { email: true, push: true, inApp: true }
           };
           break;
-          
+
         default:
           notificationData = {
             title: 'Report Status Updated',
@@ -305,14 +305,14 @@ export class ReportService {
 
   async takeActionOnReportedItem(reportId: string, adminId: string): Promise<{ success: boolean; message: string }> {
     const report = await this.reportModel.findById(reportId);
-    
+
     if (!report) {
       throw new NotFoundException('Report not found');
     }
 
     try {
       let actionDescription = `Direct moderation action taken on ${report.type}`;
-      
+
       // Get specific action based on report type and category
       switch (report.category) {
         case 'inappropriate_content':
@@ -346,7 +346,7 @@ export class ReportService {
       // Notify user with detailed action information
       try {
         await this.notificationService.createNotification(report.reportedBy.toString(), {
-          title: '✅ Action Taken on Your Report',
+          title: 'âœ… Action Taken on Your Report',
           message: `Great news! We've taken action on the ${report.type} you reported. ${actionDescription}. Your vigilance helps keep our community safe and welcoming for everyone.`,
           type: 'report_action_taken',
           priority: 'success',
@@ -369,7 +369,7 @@ export class ReportService {
 
   async deleteReport(reportId: string, adminId: string): Promise<void> {
     const report = await this.reportModel.findById(reportId);
-    
+
     if (!report) {
       throw new NotFoundException('Report not found');
     }
@@ -384,7 +384,7 @@ export class ReportService {
     // Notify user with explanation about report review
     try {
       await this.notificationService.createNotification(report.reportedBy.toString(), {
-        title: '📋 Report Review Complete',
+        title: 'ðŸ“‹ Report Review Complete',
         message: `Thank you for your ${report.type} report. After thorough review, we found the content didn't violate our community guidelines. We appreciate your continued vigilance in helping us maintain a safe environment.`,
         type: 'report_dismissed',
         priority: 'info',
@@ -403,9 +403,9 @@ export class ReportService {
     const totalReports = await this.reportModel.countDocuments({ isDeleted: false });
     const pendingReports = await this.reportModel.countDocuments({ status: 'pending', isDeleted: false });
     const underReviewReports = await this.reportModel.countDocuments({ status: 'under_review', isDeleted: false });
-    const resolvedReports = await this.reportModel.countDocuments({ 
-      status: { $in: ['action_taken', 'resolved'] }, 
-      isDeleted: false 
+    const resolvedReports = await this.reportModel.countDocuments({
+      status: { $in: ['action_taken', 'resolved'] },
+      isDeleted: false
     });
 
     // Get reports by status for detailed breakdown
