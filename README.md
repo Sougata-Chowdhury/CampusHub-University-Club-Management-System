@@ -28,47 +28,22 @@ Open the deployed application:
 > The production URL is recommended for testing. Vercel preview URLs may require Vercel
 > authentication depending on the project’s deployment protection settings.
 
-## Demo accounts
+## Testing the deployed application
 
-These accounts are created by the idempotent demo seed command described below:
+The deployed database is not seeded with public demo credentials. Use **Create an account** on
+the registration page to create a test user, then explore the member workspace. Administrator
+access requires an account with the appropriate role in the deployed database and is intentionally
+not documented with a public password.
 
-| Role | Email | Password | Suggested tour |
-|---|---|---|---|
-| Administrator | `demo.admin@campushub.test` | `CampusHubDemo2026!` | Admin dashboard, approvals, reports and feedback moderation |
-| Student | `alex.morgan@campushub.test` | `CampusHubDemo2026!` | Dashboard, clubs, events, payments and notifications |
-| Club organizer | `jordan.lee@campushub.test` | `CampusHubDemo2026!` | Club management, events and announcements |
-| Member | `samira.khan@campushub.test` | `CampusHubDemo2026!` | Joined clubs, event feedback and the media experience |
-
-These are intentionally non-production demo credentials. Change or remove them before using a
-database for real users.
-
-## Seed the deployed demo database
-
-The repository includes an idempotent seed script that adds representative data without clearing
-existing collections. It creates demo users, approved and pending club activity, upcoming and past
-events, announcements, payments, notifications, feedback and moderation reports.
-
-Run this from the deployed Render service shell, where the private `MONGODB_URI` is already
-configured:
-
-```bash
-npm run seed:demo
-```
-
-The command is safe to run again. It updates the same demo records instead of creating duplicates.
-It does not delete existing users or application data.
-
-### Seeded demo content
-
-- 4 clubs: robotics, debate, creative arts and sustainability
-- 5 events, including upcoming and completed examples
-- 4 announcements
-- Pending and approved payment records
-- Read and unread notifications
-- Approved and pending feedback
-- A pending moderation report
+For a complete portfolio demonstration, connect the backend to a private MongoDB instance and
+populate it with approved clubs, events and announcements before sharing administrator access.
 
 ## Product preview
+
+![CampusHub product preview showing the member workspace, event discovery and moderation screens](docs/screenshots/campushub-preview.svg)
+
+The preview above illustrates the intended product surfaces. Use the live links in the [Live demo](#live-demo)
+section to interact with the current deployment.
 
 ### Member workspace
 
