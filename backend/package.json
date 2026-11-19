@@ -17,7 +17,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "seed:complete": "npx ts-node src/seed-complete.ts"
+    "seed:demo": "npx ts-node src/seed-demo.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
