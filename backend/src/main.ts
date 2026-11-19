@@ -19,10 +19,13 @@ async function bootstrap() {
     'http://localhost:3000',
     'http://127.0.0.1:3000',
   ].filter(Boolean);
+  const isAllowedVercelPreview = (origin: string) =>
+    /^https:\/\/university-club-management-system-[a-z0-9-]+\.vercel\.app$/i.test(origin);
 
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(normalizeOrigin(origin))) {
+      const normalizedOrigin = origin ? normalizeOrigin(origin) : '';
+      if (!origin || allowedOrigins.includes(normalizedOrigin) || isAllowedVercelPreview(normalizedOrigin)) {
         callback(null, true);
         return;
       }
