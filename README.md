@@ -40,10 +40,27 @@ populate it with approved clubs, events and announcements before sharing adminis
 
 ## Product preview
 
-![CampusHub product preview showing the member workspace, event discovery and moderation screens](docs/screenshots/campushub-preview.svg)
+These screenshots are captured from the deployed CampusHub application rather than recreated
+mockups. Use the live links in the [Live demo](#live-demo) section to interact with the current
+deployment.
 
-The preview above illustrates the intended product surfaces. Use the live links in the [Live demo](#live-demo)
-section to interact with the current deployment.
+| Sign in | Create account |
+|---|---|
+| ![CampusHub sign-in screen](docs/screenshots/login.jpg) | ![CampusHub registration screen](docs/screenshots/register.jpg) |
+
+### Interface snippets
+
+```text
+Member authentication
+  CampusHub → Welcome back → Sign in
+  CampusHub → Create your account → Register
+
+Shared experience
+  App shell → Dashboard → Clubs → Events → Payments → Notifications → Profile
+
+Administration
+  Admin portal → Overview → Users → Clubs → Payments → Feedback → Reports
+```
 
 ### Member workspace
 
